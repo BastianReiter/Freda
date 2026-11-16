@@ -1,0 +1,30 @@
+Package: Freda
+Title: Federated Refinement and Exploration of Real-World Data
+Version: 0.4.0
+Authors@R: 
+    person("Bastian", "Reiter", , "b.reiter@med.uni-frankfurt.de", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-1088-0502"))
+Description: 
+URL: https://github.com/BastianReiter/Freda
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+Imports:
+    assertthat,
+    cli,
+    dplyr,
+    lifecycle,
+    lubridate,
+    magrittr,
+    purrr,
+    rlang,
+    stats,
+    stringdist,
+    stringr,
+    survival,
+    tibble,
+    tidyr
+Depends:
+    R (>= 4.1.0)
+LazyData: true
+Config/roxygen2/version: 8.1.0

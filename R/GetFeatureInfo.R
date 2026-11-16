@@ -1,0 +1,48 @@
+
+#' GetFeatureInfo
+#'
+#' Obtain data about feature type and sample size.
+#'
+#' @param TableName \code{string} - Name of the data frame that contains the feature
+#' @param FeatureName \code{string} - Name of feature
+#'
+#' @return A \code{list}
+#'
+#' @export
+#'
+#' @author Bastian Reiter
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+GetFeatureInfo <- function(TableName,
+                           FeatureName)
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+{
+  # --- For Testing Purposes ---
+  # TableName <- ADS$Patients
+  # FeatureName <- "TNM.T"
+
+  # --- Argument Validation ---
+  assert_that(is.string(TableName),
+              is.string(FeatureName))
+
+#-------------------------------------------------------------------------------
+
+  # Get local object: Parse expression and evaluate
+  Table <- eval(parse(text = TableName), envir = parent.frame())
+
+#-------------------------------------------------------------------------------
+
+  # Evaluate feature in question / Get vector
+  Feature <- Table[[FeatureName]]
+
+  # Tibble containing useful properties
+  Properties <- tibble::tibble(DataType = class(Feature),
+                               N.Total = length(Feature),
+                               N.Valid = sum(!is.na(Feature)),
+                               ValidProportion = N.Valid / N.Total,
+                               N.Missing = sum(is.na(Feature)),
+                               MissingProportion = N.Missing / N.Total,
+                               CountUniqueValues = length(unique(Feature[!is.na(Feature)])))      # Count only non-NA unique values
+
+#-------------------------------------------------------------------------------
+  return(Properties)
+}
