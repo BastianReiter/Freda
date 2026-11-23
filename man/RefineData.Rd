@@ -5,9 +5,9 @@
 \title{RefineData}
 \usage{
 RefineData(
-  SourceDataSetName = "SourceDataSet",
-  Module,
-  Profile.CurationProcess = "Default",
+  SourceDataSet,
+  FREDAModule,
+  Profile.RefinementProcess = "Default",
   Profile.DataRemediation = "Default",
   Profile.Dictionary = "Default",
   Profile.FeatureRequirements = "Default",
@@ -22,11 +22,11 @@ RefineData(
 )
 }
 \arguments{
-\item{SourceDataSetName}{\code{character} - Name of Source Data Set object (list) on server - Default: 'SourceDataSet'}
+\item{SourceDataSet}{\code{list} of \code{data.frames} - Source Data Set}
 
-\item{Module}{\code{string} - Identifying a registered FREDA module. Meta data and processing settings are obtained from the corresponding installed package.}
+\item{FREDAModule}{\code{list} - A FREDA module containing meta data and processing settings}
 
-\item{Profile.CurationProcess}{\code{string} - "Default"}
+\item{Profile.RefinementProcess}{\code{string} - "Default"}
 
 \item{Profile.DataRemediation}{\code{string} - "Default"}
 
@@ -84,9 +84,6 @@ A \code{list} containing the following objects:
 \description{
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}} \cr\cr
 Transforms Source Data Set (SDS) into Refined Data Set (RDS) while tracking data set transformation.
-}
-\details{
-Server-side ASSIGN method
 }
 \author{
 Bastian Reiter

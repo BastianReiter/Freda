@@ -5,16 +5,18 @@
 \title{GetDataSetCheck}
 \usage{
 GetDataSetCheck(
-  DataSetName,
+  DataSet,
+  FREDAModule = NULL,
   RequiredTableNames = NULL,
   RequiredFeatureNames = NULL,
   EligibleValueSets = NULL,
-  Module = NULL,
   Stage = NULL
 )
 }
 \arguments{
-\item{DataSetName}{\code{string} - Name of Data Set object (list) on server, usually "RawDataSet", "CuratedDataSet" or "AugmentedDataSet"}
+\item{DataSet}{\code{list} of \code{data.frames} - Data Set object}
+
+\item{FREDAModule}{Optional \code{list} - A FREDA module containing meta data and processing settings}
 
 \item{RequiredTableNames}{Optional \code{character vector} - Names of required tables}
 
@@ -22,9 +24,7 @@ GetDataSetCheck(
 
 \item{EligibleValueSets}{Optional \code{list} of \code{character vectors} containing sets of eligible values for corresponding feature.}
 
-\item{Module}{Optional \code{string} identifying a defined data set and the corresponding meta data (Examples: 'CCP' / 'P21')}
-
-\item{Stage}{Optional \code{string} - Indicating transformation stage of addressed data set. This is relevant for which names and values to look up in module meta data. Options: 'Raw' / 'Curated' / 'Augmented'}
+\item{Stage}{Optional \code{string} - Indicating transformation stage of addressed data set. This is relevant for which names and values to look up in module meta data. Options: 'Source' / 'Refined' / 'Enriched'}
 }
 \value{
 A \code{list} containing meta data about tables in a data set
@@ -34,7 +34,7 @@ Checks out a data set (\code{list} of \code{data.frames}) and returns an informa
 \enumerate{
 \item The data set can be inspected naively without passing any additional information about it
 \item Meta data like required table and feature names as well as eligible value sets can be passed explicitly
-\item A Module identifier from a list of registered modules can be passed ('CCP' / 'P21' / ...), which leads to meta data being taken from a linked package }
+\item A Freda Module containing data model meta data can be passed }
 }
 \author{
 Bastian Reiter

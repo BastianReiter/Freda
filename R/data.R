@@ -7,23 +7,10 @@
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Meta.Modules.rda
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-#' Registered modules ('CCP' / 'P21' / ...)
-#'
-#' A \code{list} containing names of modules and linked package names
-#'
-#' @format ## `Meta.Modules`
-#' \code{list}
-"Meta.Modules"
-
-
-#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Set.PrivacyProfiles.rda
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-#' Different profiles of privacy settings used to determine disclosure control in relevant dsFreda functions
+#' Different profiles of privacy settings used to determine disclosure control in relevant Freda functions
 #'
 #' @format ## `Set.PrivacyProfiles`
 #' \code{list}

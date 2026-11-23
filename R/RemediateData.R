@@ -39,12 +39,12 @@ RemediateData <- function(Feature,
   # Feature <- DataSet$SystemicTherapy$Regime
   # FeatureName <- "Regimen"
   # ContextDataFrame <- DataSet$SystemicTherapy
-  # names(ContextDataFrame) <- dsCCPhos::Meta.Features %>% filter(TableName.Curated == "SystemicTherapy") %>% pull(FeatureName.Curated)
+  # names(ContextDataFrame) <- dsCCPhos::Meta.Features %>% filter(TableName.Refined == "SystemicTherapy") %>% pull(FeatureName.Refined)
   # tablename <- "SystemicTherapy"
   # EligibleValueSet <- dsCCPhos::Meta.Values %>%
   #                           filter(Table == tablename,
-  #                                  FeatureName.Curated == FeatureName) %>%
-  #                           pull(Value.Curated)
+  #                                  FeatureName.Refined == FeatureName) %>%
+  #                           pull(Value.Refined)
   # Methods <- as.list(dsCCPhos::Set.DataRemediation %>% filter(Table == tablename, Feature == FeatureName))
   # TransformativeExpressions = dsCCPhos::Set.TransformativeExpressions %>% filter(Table == tablename, Feature == FeatureName)
   # StringExtraction <- as.list(dsCCPhos::Set.StringExtraction %>% filter(Table == tablename, Feature == FeatureName))
@@ -161,22 +161,22 @@ RemediateData <- function(Feature,
 
       if (length(EligibleStrings) > 0 && length(FuzzyStringMatching.C) > 0)
       {
-          Vector <- dsFreda::GetFuzzyStringMatches(Vector = Vector,
-                                                   EligibleStrings = EligibleStrings,
-                                                   PreferredMethod = FuzzyStringMatching.C$PreferredMethod,
-                                                   FindBestMethod = FuzzyStringMatching.C$FindBestMethod,
-                                                   Tolerance = FuzzyStringMatching.C$Tolerance,
-                                                   Preprocessing.FlattenCase = FuzzyStringMatching.C$Preprocessing.FlattenCase,
-                                                   Preprocessing.RemoveAllWhiteSpace = FuzzyStringMatching.C$Preprocessing.RemoveAllWhiteSpace,
-                                                   Preprocessing.SquishWhiteSpace = FuzzyStringMatching.C$Preprocessing.SquishWhiteSpace,
-                                                   StringdistArguments = list(useBytes = FuzzyStringMatching.C$Stringdist.useBytes,
-                                                                              weight = c(d = as.numeric(FuzzyStringMatching.C$Stringdist.weight.d),
-                                                                                         i = as.numeric(FuzzyStringMatching.C$Stringdist.weight.i),
-                                                                                         s = as.numeric(FuzzyStringMatching.C$Stringdist.weight.s),
-                                                                                         t = as.numeric(FuzzyStringMatching.C$Stringdist.weight.t)),
-                                                                              q = as.numeric(FuzzyStringMatching.C$Stringdist.q),
-                                                                              p = as.numeric(FuzzyStringMatching.C$Stringdist.p),
-                                                                              bt = as.numeric(FuzzyStringMatching.C$Stringdist.bt)))
+          Vector <- Freda::GetFuzzyStringMatches(Vector = Vector,
+                                                 EligibleStrings = EligibleStrings,
+                                                 PreferredMethod = FuzzyStringMatching.C$PreferredMethod,
+                                                 FindBestMethod = FuzzyStringMatching.C$FindBestMethod,
+                                                 Tolerance = FuzzyStringMatching.C$Tolerance,
+                                                 Preprocessing.FlattenCase = FuzzyStringMatching.C$Preprocessing.FlattenCase,
+                                                 Preprocessing.RemoveAllWhiteSpace = FuzzyStringMatching.C$Preprocessing.RemoveAllWhiteSpace,
+                                                 Preprocessing.SquishWhiteSpace = FuzzyStringMatching.C$Preprocessing.SquishWhiteSpace,
+                                                 StringdistArguments = list(useBytes = FuzzyStringMatching.C$Stringdist.useBytes,
+                                                                            weight = c(d = as.numeric(FuzzyStringMatching.C$Stringdist.weight.d),
+                                                                                       i = as.numeric(FuzzyStringMatching.C$Stringdist.weight.i),
+                                                                                       s = as.numeric(FuzzyStringMatching.C$Stringdist.weight.s),
+                                                                                       t = as.numeric(FuzzyStringMatching.C$Stringdist.weight.t)),
+                                                                            q = as.numeric(FuzzyStringMatching.C$Stringdist.q),
+                                                                            p = as.numeric(FuzzyStringMatching.C$Stringdist.p),
+                                                                            bt = as.numeric(FuzzyStringMatching.C$Stringdist.bt)))
       }
 
       return(Vector)

@@ -1,6 +1,6 @@
 Package: Freda
 Title: Federated Refinement and Exploration of Real-World Data
-Version: 0.4.0
+Version: 0.4.01
 Authors@R: 
     person("Bastian", "Reiter", , "b.reiter@med.uni-frankfurt.de", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-1088-0502"))
@@ -24,6 +24,8 @@ Imports:
     survival,
     tibble,
     tidyr
+Suggests:
+    readxl
 Depends:
     R (>= 4.1.0)
 LazyData: true

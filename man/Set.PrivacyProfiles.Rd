@@ -3,7 +3,7 @@
 \docType{data}
 \name{Set.PrivacyProfiles}
 \alias{Set.PrivacyProfiles}
-\title{Different profiles of privacy settings used to determine disclosure control in relevant dsFreda functions}
+\title{Different profiles of privacy settings used to determine disclosure control in relevant Freda functions}
 \format{
 \subsection{\code{Set.PrivacyProfiles}}{
 
@@ -17,6 +17,6 @@
 Set.PrivacyProfiles
 }
 \description{
-Different profiles of privacy settings used to determine disclosure control in relevant dsFreda functions
+Different profiles of privacy settings used to determine disclosure control in relevant Freda functions
 }
 \keyword{datasets}

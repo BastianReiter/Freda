@@ -1,7 +1,7 @@
 
 #' FinalizeDataRemediation
 #'
-#' Auxiliary function within \code{\link{CurateDataDS}}
+#' Auxiliary function within \code{\link{RefineData}}
 #'
 #' Unremediated / Ineligible data is turned into NA per default.
 #' Optional factor conversion establishes level order where appropriate.
@@ -53,8 +53,8 @@ FinalizeDataRemediation <- function(TargetVector,
                               arrange(FactorRank)
 
       # Get eligible values (and their labels in case the feature should be factorized)
-      EligibleValues <- EligibleValueSet$Value.Curated
-      EligibleValueLabels <- EligibleValueSet$Label.Curated
+      EligibleValues <- EligibleValueSet$Value.Refined
+      EligibleValueLabels <- EligibleValueSet$Label.Refined
 
       # Get logical vector indicating eligibility of values
       IsEligible <- TargetVector %in% EligibleValues

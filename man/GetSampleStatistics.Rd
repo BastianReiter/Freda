@@ -5,7 +5,7 @@
 \title{GetSampleStatistics}
 \usage{
 GetSampleStatistics(
-  TableName,
+  Table,
   FeatureName,
   GroupingFeatureName = NULL,
   RemoveNA = TRUE,
@@ -13,7 +13,7 @@ GetSampleStatistics(
 )
 }
 \arguments{
-\item{TableName}{\code{string} - Name of the table that contains the feature}
+\item{Table}{\code{data.frame} that contains the feature}
 
 \item{FeatureName}{\code{string} - Name of feature}
 

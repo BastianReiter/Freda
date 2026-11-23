@@ -5,20 +5,23 @@
 \title{GetFrequencyTable}
 \usage{
 GetFrequencyTable(
-  TableName,
+  Table,
   FeatureName,
   GroupingFeatureName = NULL,
-  RemoveNA = FALSE
+  RemoveNA = FALSE,
+  PrivacySettings = NULL
 )
 }
 \arguments{
-\item{TableName}{\code{string} - Name of the Data frame that contains the feature}
+\item{Table}{\code{data.frame} that contains the feature}
 
 \item{FeatureName}{\code{string} - Name of feature}
 
 \item{GroupingFeatureName}{\code{string} - Name of optional grouping feature}
 
 \item{RemoveNA}{\code{logical} - Indicating whether missing values should be removed prior to frequency calculation - Default: \code{FALSE}}
+
+\item{PrivacySettings}{\code{list}}
 }
 \value{
 A \code{tibble} containing absolute and relative frequencies

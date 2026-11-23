@@ -81,12 +81,12 @@ SubsumeRecords <- function(Table,
 
   if (SubsumptionRedundancies.Detect == TRUE)
   {
-      # Find and mark table records considered redundant by subsumption using dsFreda::FindSubsumptionRedundancies()
+      # Find and mark table records considered redundant by subsumption using Freda::FindSubsumptionRedundancies()
       Table <- Table %>%
-                  dsFreda::FindSubsumptionRedundancies(PrimaryKey = PrimaryKey,
-                                                       DistinctiveFeatures = SubsumptionRedundancies.DistinctiveFeatures,
-                                                       NegligibleFeatures = SubsumptionRedundancies.NegligibleFeatures,
-                                                       NegligibleValues = SubsumptionRedundancies.NegligibleValues)
+                  Freda::FindSubsumptionRedundancies(PrimaryKey = PrimaryKey,
+                                                     DistinctiveFeatures = SubsumptionRedundancies.DistinctiveFeatures,
+                                                     NegligibleFeatures = SubsumptionRedundancies.NegligibleFeatures,
+                                                     NegligibleValues = SubsumptionRedundancies.NegligibleValues)
 
       # Create DETECTOR containing all records considered redundant by subsumption
       Detector.SubsumptionRedundancies <- Table %>%

@@ -6,10 +6,10 @@
 #'            \item Add ID feature (running number) for tables without primary key feature
 #'            \item Type- or format-conversion of features }
 #'
-#' @param SourceDataSetName \code{string} - Name of Source Data Set object (list) on server
-#' @param Module \code{string} identifying a defined data set and the corresponding meta data needed for feature name harmonization (Examples: 'CCP' / 'P21')
-#' @param FeatureNames.Dictionary Optional \code{list} containing dictionary data for raw feature name harmonization (Form: \code{list(Department = c(FAB = "Fachabteilung"))})
-#' @param FeatureNames.FuzzyStringMatching.Run \code{logical} - Whether to use fuzzy string matching to harmonize raw feature names
+#' @param SourceDataSet \code{list} of \code{data.frames} - Source Data Set
+#' @param FREDAModule \code{list} - A FREDA module containing meta data and processing settings
+#' @param FeatureNames.Dictionary Optional \code{list} containing dictionary data for source feature name harmonization (Form: \code{list(Department = c(FAB = "Fachabteilung"))})
+#' @param FeatureNames.FuzzyStringMatching.Run \code{logical} - Whether to use fuzzy string matching to harmonize source feature names
 #' @param FeatureNames.FuzzyStringMatching.PreferredMethod \code{logical} - Selects the method \code{stringdist()} uses (see \code{stringdist} documentation) - Default: 'jw'
 #' @param FeatureNames.FuzzyStringMatching.Tolerance \code{logical} - Number between 0 and 1 relating to normalized distance between to strings (1 meaning furthest distance, 0 meaning no distance). If a string in 'Vector' is not similar enough to any of the 'EligibleStrings' and its minimal harmonized distance exceeds this number, it is set \code{NA}. - Default: 0.2
 #' @param AddIDFeature.Do \code{logical} - Whether to add an ID feature (running number) to tables
@@ -17,10 +17,10 @@
 #' @param AddIDFeature.OverwriteExistingIDFeature \code{logical} - Whether to overwrite an existing feature with the same name
 #' @param Conversion.IntoCharacter \code{string} - Controls conversion of certain features in data set tables into character type. One of 'None' / 'All' / 'Date'. - Default: 'None'
 #' @param Conversion.DateIntoPOSIXct \code{string} - An encoded string representing a list with character vectors containing date formats used in argument 'tryFormats' in function \code{base::as.POSIXct}. List element should be either '.All' for all date features or specific date feature names. - Default: \code{NULL}
-#' @param RecodeFeatureNames \code{logical} - Indicating whether (after primary harmonization) feature names should be recoded from 'raw' to 'curated' feature names according to Module-specific meta data
+#' @param RecodeFeatureNames \code{logical} - Indicating whether (after primary harmonization) feature names should be recoded from 'source' to 'refined' feature names according to FREDAModule-specific meta data
 #'
 #' @return A \code{list} containing
-#'          \itemize{ \item The input SourceDataSet (\code{list}) with harmonized (and optionally curated) feature names
+#'          \itemize{ \item The input SourceDataSet (\code{list}) with harmonized (and optionally refined) feature names
 #'                    \item The original input SourceDataSet (\code{list})
 #'                    \item Messages (\code{character vector}) }
 #'
@@ -28,8 +28,8 @@
 #'
 #' @author Bastian Reiter
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-PrepareSourceData <- function(SourceDataSetName,
-                              Module,
+PrepareSourceData <- function(SourceDataSet,
+                              FREDAModule,
                               FeatureNames.Dictionary = list(),
                               FeatureNames.FuzzyStringMatching.Run = FALSE,
                               FeatureNames.FuzzyStringMatching.PreferredMethod = "jw",
@@ -43,8 +43,8 @@ PrepareSourceData <- function(SourceDataSetName,
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 {
   # --- For Testing Purposes ---
-  # SourceDataSetName <- "P21.SourceDataSet"
-  # Module <- "P21"
+  # SourceDataSet <- P21.SourceDataSet
+  # FREDAModule <- P21.FREDAModule
   # FeatureNames.Dictionary <- list(Department = c(FAB = "Fachabteilung"))
   # FeatureNames.FuzzyStringMatching.Run <- TRUE
   # FeatureNames.FuzzyStringMatching.PreferredMethod <- "jw"
@@ -57,8 +57,8 @@ PrepareSourceData <- function(SourceDataSetName,
   # RecodeFeatureNames <- TRUE
 
   # --- Argument Validation ---
-  assert_that(is.string(SourceDataSetName),
-              is.string(Module),
+  assert_that(is.list(SourceDataSet),
+              is.list(FREDAModule),
               is.list(FeatureNames.Dictionary),
               is.flag(FeatureNames.FuzzyStringMatching.Run),
               is.string(FeatureNames.FuzzyStringMatching.PreferredMethod),
@@ -76,14 +76,12 @@ PrepareSourceData <- function(SourceDataSetName,
 # - OVERVIEW -
 #===============================================================================
 #   A)  Optionally add ID feature
-#   B)  Try to harmonize raw feature names
-#   C)  Optionally curate / recode feature names according to feature meta data
+#   B)  Try to harmonize source feature names
+#   C)  Optionally recode feature names according to feature meta data
 #   D)  Optionally convert features to character type
 #   E)  Optionally convert date features to POSIXct type
 #-------------------------------------------------------------------------------
 
-  # Get local object: Parse expression and evaluate
-  SourceDataSet <- eval(parse(text = SourceDataSetName), envir = parent.frame())
   # Save a 'backup' of the input data set (this will be part of output so changes to feature names can be tracked)
   OriginalSourceDataSet <- SourceDataSet
 
@@ -98,11 +96,6 @@ PrepareSourceData <- function(SourceDataSetName,
 
   # Initiate output messaging object
   Messages <- list(SourceFeatureNames = character())
-
-  # Get package name from 'Meta.Modules'
-  ModulePackageName <- dsFreda::Meta.Modules[[Module]]
-  # Get package-owned module-specific meta data
-  Meta.Features.Module <- eval(parse(text = paste0(ModulePackageName, "::Meta.Features")))
 
 
 # Performing preparatory operations
@@ -131,11 +124,11 @@ PrepareSourceData <- function(SourceDataSetName,
 
 
                             #---------------------------------------------------
-                            # B) Try to harmonize raw feature names using fuzzy string matching and dictionary data
+                            # B) Try to harmonize Source feature names using fuzzy string matching and dictionary data
                             #---------------------------------------------------
 
-                            # Get expected feature names from module-specific meta data
-                            EligibleFeatureNames <- Meta.Features.Module %>%
+                            # Get expected feature names from FREDAModule-specific meta data
+                            EligibleFeatureNames <- FREDAModule$MetaData$Features %>%
                                                         filter(TableName.Refined == tablename) %>%
                                                         select(FeatureName.Source,
                                                                FeatureName.Refined) %>%
@@ -166,7 +159,7 @@ PrepareSourceData <- function(SourceDataSetName,
 
 
                             #---------------------------------------------------
-                            # C) Optionally change feature names according to Module meta data (FeatureName.Source -> FeatureName.Refined)
+                            # C) Optionally change feature names according to FREDAModule meta data (FeatureName.Source -> FeatureName.Refined)
                             #---------------------------------------------------
 
                             # Initiate 'RefinedFeatureNames'
@@ -174,26 +167,26 @@ PrepareSourceData <- function(SourceDataSetName,
 
                             if (RecodeFeatureNames == TRUE)
                             {
-                                # Create dictionary (named character vector) from Module meta data
-                                CurationDictionary <- Meta.Features.Module %>%
+                                # Create dictionary (named character vector) from FREDAModule meta data
+                                RecodingDictionary <- FREDAModule$MetaData$Features %>%
                                                           filter(TableName.Refined == tablename) %>%
                                                           select(FeatureName.Source,
                                                                  FeatureName.Refined) %>%
                                                           tibble::deframe()
 
-                                if (length(CurationDictionary) > 0)
+                                if (length(RecodingDictionary) > 0)
                                 {
-                                    # Create recoded versions of previously harmonized 'raw' feature names
-                                    RefinedFeatureNames <- if_else(is.na(CurationDictionary[HarmonizedFeatureNames]),
+                                    # Create recoded versions of previously harmonized 'source' feature names
+                                    RefinedFeatureNames <- if_else(is.na(RecodingDictionary[HarmonizedFeatureNames]),
                                                                    HarmonizedFeatureNames,
-                                                                   CurationDictionary[HarmonizedFeatureNames])
+                                                                   RecodingDictionary[HarmonizedFeatureNames])
 
                                     # Also recode feature names stated in element names of list argument 'Conversion.DateIntoPOSIXct'
                                     if (length(Conversion.DateIntoPOSIXct) > 0)
                                     {
-                                        names(Conversion.DateIntoPOSIXct) <- if_else(is.na(CurationDictionary[names(Conversion.DateIntoPOSIXct)]),
+                                        names(Conversion.DateIntoPOSIXct) <- if_else(is.na(RecodingDictionary[names(Conversion.DateIntoPOSIXct)]),
                                                                                        names(Conversion.DateIntoPOSIXct),
-                                                                                       CurationDictionary[names(Conversion.DateIntoPOSIXct)])
+                                                                                       RecodingDictionary[names(Conversion.DateIntoPOSIXct)])
                                     }
                                 }
                             }
@@ -218,7 +211,7 @@ PrepareSourceData <- function(SourceDataSetName,
 
                             if (length(ChangedSourceNames) == 0 || nrow(ChangedSourceNames) == 0)
                             {
-                                Message <- paste0("Table '", tablename, "': No changes to raw feature names.")
+                                Message <- paste0("Table '", tablename, "': No changes to source feature names.")
                                 cli::cat_bullet(Message, bullet = "info")
                                 CurrentMessages <- c(CurrentMessages,
                                                      Info = Message)
@@ -307,8 +300,8 @@ PrepareSourceData <- function(SourceDataSetName,
                             # E) Optionally convert date features (or character features containing date data) into POSIXct
                             #---------------------------------------------------
 
-                            # Get date feature names from module meta data
-                            DateFeatureNames <- Meta.Features.Module %>%
+                            # Get date feature names from FREDAModule meta data
+                            DateFeatureNames <- FREDAModule$MetaData$Features %>%
                                                     filter(TableName.Refined == tablename,
                                                            Type == "date") %>%
                                                     { if (RecodeFeatureNames == TRUE) { pull(., FeatureName.Refined) }
@@ -368,7 +361,7 @@ PrepareSourceData <- function(SourceDataSetName,
                   set_names(sub(".*\\.", "", names(.)))
 
 
-# Create and display message about curational recoding of feature names
+# Create and display message about recoding of feature names
 #-------------------------------------------------------------------------------
   if (RecodeFeatureNames == TRUE)
   {
