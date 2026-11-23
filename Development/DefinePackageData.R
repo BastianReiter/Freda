@@ -89,13 +89,3 @@ Set.PrivacyProfile.Chosen <- "Loose"
 use_data(Set.PrivacyProfile.Chosen, overwrite = TRUE)
 
 
-#===============================================================================
-# Module Register
-#===============================================================================
-
-Meta.Modules <- list(CCP = "dsCCPhos",
-                     P21 = "dsFredaP21")
-
-# Save data in .rda-file and make it part of package
-use_data(Meta.Modules, overwrite = TRUE)
-

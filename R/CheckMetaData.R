@@ -45,7 +45,7 @@ CheckMetaData <- function(MetaData)
 
   SeedTableName <- MetaData$Tables %>%
                         filter(Role == "Seed") %>%
-                        pull(TableName.Curated)
+                        pull(TableName.Refined)
 
   if (length(SeedTableName) != 1) { CheckSuccessful <- FALSE}
 

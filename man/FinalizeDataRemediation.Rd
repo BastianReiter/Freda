@@ -30,7 +30,7 @@ FinalizeDataRemediation(
 A \code{vector} (or factor)
 }
 \description{
-Auxiliary function within \code{\link{CurateDataDS}}
+Auxiliary function within \code{\link{RefineData}}
 }
 \details{
 Unremediated / Ineligible data is turned into NA per default.

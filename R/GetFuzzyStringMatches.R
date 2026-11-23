@@ -126,11 +126,11 @@ GetFuzzyStringMatches <- function(Vector,
 
           # Get best matches for every element in 'IneligibleStrings' with the current method
           BestMatches <- IneligibleStrings %>%
-                              map_vec(\(string) dsFreda::GetBestStringMatch(String = string,
-                                                                            EligibleStrings = EligibleStringsTracker$Modification,
-                                                                            Method = CurrentMethod,
-                                                                            Tolerance = Tolerance,
-                                                                            StringdistArguments = StringdistArguments)) %>%
+                              map_vec(\(string) Freda::GetBestStringMatch(String = string,
+                                                                          EligibleStrings = EligibleStringsTracker$Modification,
+                                                                          Method = CurrentMethod,
+                                                                          Tolerance = Tolerance,
+                                                                          StringdistArguments = StringdistArguments)) %>%
                               setNames(IneligibleStrings)
 
           # Posterior validity grade: To measure method performance calculate proportion of valid elements in 'BestMatches' after matching
@@ -157,11 +157,11 @@ GetFuzzyStringMatches <- function(Vector,
 
       # Get best matches for every element in 'IneligibleStrings' with the method given in 'PreferredMethod'
       BestMatches <- IneligibleStrings %>%
-                          map_vec(\(string) dsFreda::GetBestStringMatch(String = string,
-                                                                        EligibleStrings = EligibleStringsTracker$Modification,
-                                                                        Method = PreferredMethod,
-                                                                        Tolerance = Tolerance,
-                                                                        StringdistArguments = StringdistArguments)) %>%
+                          map_vec(\(string) Freda::GetBestStringMatch(String = string,
+                                                                      EligibleStrings = EligibleStringsTracker$Modification,
+                                                                      Method = PreferredMethod,
+                                                                      Tolerance = Tolerance,
+                                                                      StringdistArguments = StringdistArguments)) %>%
                           setNames(IneligibleStrings)
   }
 

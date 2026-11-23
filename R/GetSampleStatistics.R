@@ -3,7 +3,7 @@
 #'
 #' Calculate common sample statistics for a feature of a data.frame.
 #'
-#' @param TableName \code{string} - Name of the table that contains the feature
+#' @param Table \code{data.frame} that contains the feature
 #' @param FeatureName \code{string} - Name of feature
 #' @param GroupingFeatureName \code{string} - Name of optional grouping feature
 #' @param RemoveNA \code{logical} - Whether NA values should be removed before calculating statistics
@@ -15,7 +15,7 @@
 #'
 #' @author Bastian Reiter
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-GetSampleStatistics <- function(TableName,
+GetSampleStatistics <- function(Table,
                                 FeatureName,
                                 GroupingFeatureName = NULL,
                                 RemoveNA = TRUE,
@@ -30,22 +30,19 @@ GetSampleStatistics <- function(TableName,
   # ReturnECDF <- TRUE
 
   # --- Argument Validation ---
-  assert_that(is.string(TableName),
+  assert_that(is.data.frame(Table),
               is.string(FeatureName),
               is.flag(RemoveNA),
               is.flag(ReturnECDF))
   if (!is.null(GroupingFeatureName)) { assert_that(is.string(GroupingFeatureName))
-                                         assert_that(GroupingFeatureName != FeatureName,
-                                                     msg = "Values for 'GroupingFeatureName' and 'FeatureName' can not be identical.") }
+                                       assert_that(GroupingFeatureName != FeatureName,
+                                                   msg = "Values for 'GroupingFeatureName' and 'FeatureName' can not be identical.") }
 
 #-------------------------------------------------------------------------------
 
-  # Get local object: Parse expression and evaluate
-  Table <- eval(parse(text = TableName), envir = parent.frame())
-
   # Stop if 'FeatureName' is not part of 'Table' or if does not have a suitable class
   assert_that(FeatureName %in% names(Table),
-              msg = paste0("'", FeatureName, "' is not a valid feature name in '", TableName, "'."))
+              msg = paste0("'", FeatureName, "' is not a valid feature name in the given table."))
   assert_that(class(Table[[FeatureName]]) %in% c("numeric", "integer", "double"),
               msg = paste0("The specified feature '", FeatureName, "' is of class '", class(Table[[FeatureName]]), "' and therefore not suitable."))
 
@@ -53,7 +50,7 @@ GetSampleStatistics <- function(TableName,
   if (!is.null(GroupingFeatureName))
   {
       assert_that(GroupingFeatureName %in% names(Table),
-                  msg = paste0("'", GroupingFeatureName, "' is not a valid feature name in '", TableName, "'."))
+                  msg = paste0("'", GroupingFeatureName, "' is not a valid feature name in the given table."))
       assert_that(class(Table[[GroupingFeatureName]]) %in% c("character", "logical", "factor"),
                   msg = paste0("The specified grouping feature '", GroupingFeatureName, "' is of class '", class(Table[[GroupingFeatureName]]), "' and therefore not suitable."))
   }
@@ -119,21 +116,7 @@ GetSampleStatistics <- function(TableName,
   }
 
 #-------------------------------------------------------------------------------
-
-  ECDF <- NULL
-
-  # if (ReturnECDF == TRUE)
-  # {
-  #       ECDF <- Table %>%
-  #                 { if (RemoveNA == TRUE) { filter(., !is.na({{ FeatureName }})) } else {.} } %>%
-  #                 { if (!is.null(GroupingFeatureName)) { group_by(., !!sym(GroupingFeatureName)) } else {.} } %>%
-  #                 summarize(N = n(),
-  #                           ECDF = list(ecdf(.data[[FeatureName]])))
-  # }
-
-#-------------------------------------------------------------------------------
-  return(list(Statistics = Statistics,
-              ECDF = ECDF))
+  return(Statistics)
 }
 
 

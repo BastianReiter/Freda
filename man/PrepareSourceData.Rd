@@ -5,8 +5,8 @@
 \title{PrepareSourceData}
 \usage{
 PrepareSourceData(
-  SourceDataSetName,
-  Module,
+  SourceDataSet,
+  FREDAModule,
   FeatureNames.Dictionary = list(),
   FeatureNames.FuzzyStringMatching.Run = FALSE,
   FeatureNames.FuzzyStringMatching.PreferredMethod = "jw",
@@ -20,13 +20,13 @@ PrepareSourceData(
 )
 }
 \arguments{
-\item{SourceDataSetName}{\code{string} - Name of Source Data Set object (list) on server}
+\item{SourceDataSet}{\code{list} of \code{data.frames} - Source Data Set}
 
-\item{Module}{\code{string} identifying a defined data set and the corresponding meta data needed for feature name harmonization (Examples: 'CCP' / 'P21')}
+\item{FREDAModule}{\code{list} - A FREDA module containing meta data and processing settings}
 
-\item{FeatureNames.Dictionary}{Optional \code{list} containing dictionary data for raw feature name harmonization (Form: \code{list(Department = c(FAB = "Fachabteilung"))})}
+\item{FeatureNames.Dictionary}{Optional \code{list} containing dictionary data for source feature name harmonization (Form: \code{list(Department = c(FAB = "Fachabteilung"))})}
 
-\item{FeatureNames.FuzzyStringMatching.Run}{\code{logical} - Whether to use fuzzy string matching to harmonize raw feature names}
+\item{FeatureNames.FuzzyStringMatching.Run}{\code{logical} - Whether to use fuzzy string matching to harmonize source feature names}
 
 \item{FeatureNames.FuzzyStringMatching.PreferredMethod}{\code{logical} - Selects the method \code{stringdist()} uses (see \code{stringdist} documentation) - Default: 'jw'}
 
@@ -42,11 +42,11 @@ PrepareSourceData(
 
 \item{Conversion.DateIntoPOSIXct}{\code{string} - An encoded string representing a list with character vectors containing date formats used in argument 'tryFormats' in function \code{base::as.POSIXct}. List element should be either '.All' for all date features or specific date feature names. - Default: \code{NULL}}
 
-\item{RecodeFeatureNames}{\code{logical} - Indicating whether (after primary harmonization) feature names should be recoded from 'raw' to 'curated' feature names according to Module-specific meta data}
+\item{RecodeFeatureNames}{\code{logical} - Indicating whether (after primary harmonization) feature names should be recoded from 'source' to 'refined' feature names according to FREDAModule-specific meta data}
 }
 \value{
 A \code{list} containing
-\itemize{ \item The input SourceDataSet (\code{list}) with harmonized (and optionally curated) feature names
+\itemize{ \item The input SourceDataSet (\code{list}) with harmonized (and optionally refined) feature names
 \item The original input SourceDataSet (\code{list})
 \item Messages (\code{character vector}) }
 }

@@ -1,13 +1,12 @@
+
 #' RefineData
 #'
 #' `r lifecycle::badge("experimental")` \cr\cr
 #' Transforms Source Data Set (SDS) into Refined Data Set (RDS) while tracking data set transformation.
 #'
-#' Server-side ASSIGN method
-#'
-#' @param SourceDataSetName \code{character} - Name of Source Data Set object (list) on server - Default: 'SourceDataSet'
-#' @param Module \code{string} - Identifying a registered FREDA module. Meta data and processing settings are obtained from the corresponding installed package.
-#' @param Profile.CurationProcess \code{string} - "Default"
+#' @param SourceDataSet \code{list} of \code{data.frames} - Source Data Set
+#' @param FREDAModule \code{list} - A FREDA module containing meta data and processing settings
+#' @param Profile.RefinementProcess \code{string} - "Default"
 #' @param Profile.DataRemediation \code{string} - "Default"
 #' @param Profile.Dictionary \code{string} - "Default"
 #' @param Profile.FeatureRequirements \code{string} - "Default"
@@ -54,9 +53,9 @@
 #'
 #' @author Bastian Reiter
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-RefineData <- function(SourceDataSetName = "SourceDataSet",
-                       Module,
-                       Profile.CurationProcess = "Default",
+RefineData <- function(SourceDataSet,
+                       FREDAModule,
+                       Profile.RefinementProcess = "Default",
                        Profile.DataRemediation = "Default",
                        Profile.Dictionary = "Default",
                        Profile.FeatureRequirements = "Default",
@@ -77,25 +76,25 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 #
 #   SETUP
 #
-#   MODULE A)  STRUCTURAL HARMONIZATION
+#   STEP A)  STRUCTURAL HARMONIZATION
 #     1)  Transform table names
-#     2)  Add empty tables in data set if they are missing in raw data
+#     2)  Add empty tables in data set if they are missing in source data
 #     3)  Rename features
 #     4)  In tables with missing features, add empty features accordingly
 #
-#   MODULE B)  DATA SET CHECKS
+#   STEP B)  DATA SET CHECKS
 #
-#   MODULE C)  PRIMARY TABLE CLEANING
+#   STEP C)  PRIMARY TABLE CLEANING
 #     1)  Remove records that are not linked to related tables
 #     2)  Remove duplicate records
 #     3)  Remove records in SDS missing required features (defined in meta data or passed as optional argument)
 #
-#   MODULE D)  TABLE NORMALIZATION
+#   STEP D)  TABLE NORMALIZATION
 #     1)  Separate or merge features horizontally or vertically (e.g. 'Split and expand' etc.)
 #
-#   MODULE E)  DATA HARMONIZATION
+#   STEP E)  DATA HARMONIZATION
 #     2)  Definition of features to monitor during Transformation
-#     3)  Tracking of raw feature values
+#     3)  Tracking of source feature values
 #     4)  Data Remediation
 #     5)  Tracking of remediated feature values
 #     6)  Data recoding
@@ -106,27 +105,27 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 #     11) Compilation of monitor objects for reporting
 #     12) Perform data harmonization (remediation, recoding, formatting) on non-conforming records
 #
-#   MODULE F)  SECONDARY TABLE CLEANING
+#   STEP F)  SECONDARY TABLE CLEANING
 #     1)  Remove duplicate records
 #     2)  Remove records missing required features (defined in meta data or passed as optional argument)
 #
-#   MODULE G)  RECORD SUBSUMPTION
+#   STEP G)  RECORD SUBSUMPTION
 #     1)  Process data set root tables first, since other tables hold primary key.
 #         Any Root subject keys that are removed due to redundancy need to be replaced in dependent tables.
 #     2)  Proceed with all other tables
 #
 #   RETURN list containing
-#     - Curated Data Set (list)
-#     - Curation Report (list)
-#     - Curation Messages (list)
+#     - Refined Data Set (list)
+#     - Refinement Report (list)
+#     - Refinement Messages (list)
 #
 #===============================================================================
 
 
   # --- For Testing Purposes ---
-  # SourceDataSetName <- "SourceDataSet"
-  # Module <- "CCP"
-  # Profile.CurationProcess <- "Default"
+  # SourceDataSet <- CCP.SourceDataSet
+  # FREDAModule <- FREDAModule.CCP
+  # Profile.RefinementProcess <- "Default"
   # Profile.DataRemediation <- "Default"
   # Profile.Dictionary <- "Default"
   # Profile.FeatureRequirements <- "Default"
@@ -140,9 +139,9 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
   # Profile.TransformativeExpressions <- "Default"
 
   # --- Argument Validation ---
-  assert_that(is.string(SourceDataSetName),
-              is.string(Module),
-              is.string(Profile.CurationProcess),
+  assert_that(is.list(SourceDataSet),
+              is.list(FREDAModule),
+              is.string(Profile.RefinementProcess),
               is.string(Profile.DataRemediation),
               is.string(Profile.Dictionary),
               is.string(Profile.FeatureRequirements),
@@ -155,72 +154,6 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
               is.string(Profile.TableNormalization),
               is.string(Profile.TransformativeExpressions))
 
-  # Check if 'Module.S' refers to a registered FREDA module
-  if (!(Module %in% names(dsFreda::Meta.Modules))) { stop(paste0("ERROR: Value in 'Module.S' is not referring to a registered FREDA module. Possible values are: ", paste0("'", names(dsFreda::Meta.Modules), "'", collapse = ", "), ".")) }
-
-
-#-------------------------------------------------------------------------------
-# - OBTAIN MODULE DATA -
-#-------------------------------------------------------------------------------
-#   Get module META DATA and SETTINGS from corresponding package registered in 'Meta.Modules'
-#-------------------------------------------------------------------------------
-
-  # Get correct package name from 'Meta.Modules'
-  ModulePackageName <- dsFreda::Meta.Modules[[Module]]
-
-  # Get module-specific data set META DATA
-  MetaData <- list(Tables = eval(parse(text = paste0(ModulePackageName, "::Meta.Tables"))),
-                   Features = eval(parse(text = paste0(ModulePackageName, "::Meta.Features"))),
-                   Values = eval(parse(text = paste0(ModulePackageName, "::Meta.Values"))))
-
-  # Map SETTINGS objects to their corresponding profile arguments
-  SettingsMapping <- tribble(~ObjectName, ~ProfileArgument,
-                             "Proc.TableNormalization", "Profile.TableNormalization",
-                             "Set.CurationProcess", "Profile.CurationProcess",
-                             "Set.DataRemediation", "Profile.DataRemediation",
-                             "Set.Dictionary", "Profile.Dictionary",
-                             "Set.FeatureRequirements", "Profile.FeatureRequirements",
-                             "Set.FeatureTracking", "Profile.FeatureTracking",
-                             "Set.FuzzyStringMatching", "Profile.FuzzyStringMatching",
-                             "Set.PrimaryTableCleaning", "Profile.PrimaryTableCleaning",
-                             "Set.RecordSubsumption", "Profile.RecordSubsumption",
-                             "Set.SecondaryTableCleaning", "Profile.SecondaryTableCleaning",
-                             "Set.StringExtraction", "Profile.StringExtraction",
-                             "Set.TransformativeExpressions", "Profile.TransformativeExpressions")
-
-  # ASSIGN SETTINGS objects and check if passed profile names are eligible
-  for (i in 1:nrow(SettingsMapping))
-  {
-      # Assign Settings objects in function environment
-      assign(SettingsMapping$ObjectName[i], eval(parse(text = paste0(ModulePackageName, "::", SettingsMapping$ObjectName[i]))))
-
-      SettingsObjectIsEmpty <- eval(parse(text = paste0("nrow(", SettingsMapping$ObjectName[i], ") == 0")))
-
-      if (SettingsObjectIsEmpty == FALSE)
-      {
-          PassedProfileName <- eval(parse(text = SettingsMapping$ProfileArgument[i]))
-          RegisteredProfiles <- eval(parse(text = paste0("unique(", SettingsMapping$ObjectName[i], "$Profile)")))
-
-          # Check if passed profile name for current settings object is present/registered in settings data.frame
-          errormessage <- paste0("Value of argument '", SettingsMapping$ProfileArgument[i], "' does not occur in '", paste0(ModulePackageName, "::", SettingsMapping$ObjectName[i]), "'! Please pass one of the following registered profile names: ", paste0("'", RegisteredProfiles, "'", collapse = ", "), ".")
-          if (!(PassedProfileName %in% RegisteredProfiles)) { stop(errormessage) }
-      }
-  }
-
-  # Filter data.frames in SETTINGS for profile preferences
-  Settings <- list(CurationProcess = Set.CurationProcess %>% filter(Profile == Profile.CurationProcess),
-                   DataRemediation = list(Process = Set.DataRemediation %>% filter(Profile == Profile.DataRemediation),
-                                          TransformativeExpressions = Set.TransformativeExpressions %>% filter(Profile == Profile.TransformativeExpressions),
-                                          StringExtraction = Set.StringExtraction %>% filter(Profile == Profile.StringExtraction),
-                                          Dictionary = Set.Dictionary %>% filter(Profile == Profile.Dictionary),
-                                          FuzzyStringMatching = Set.FuzzyStringMatching %>% filter(Profile == Profile.FuzzyStringMatching)),
-                   FeatureRequirements = Set.FeatureRequirements %>% filter(Profile == Profile.FeatureRequirements),
-                   FeatureTracking = Set.FeatureTracking %>% filter(Profile == Profile.FeatureTracking),
-                   PrimaryTableCleaning = Set.PrimaryTableCleaning %>% filter(Profile == Profile.PrimaryTableCleaning),
-                   RecordSubsumption = Set.RecordSubsumption %>% filter(Profile == Profile.RecordSubsumption),
-                   SecondaryTableCleaning = Set.SecondaryTableCleaning %>% filter(Profile == Profile.SecondaryTableCleaning),
-                   TableNormalization = Proc.TableNormalization %>% filter(Profile == Profile.TableNormalization))
-
 
 #-------------------------------------------------------------------------------
 # - Set global options -
@@ -232,11 +165,45 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #-------------------------------------------------------------------------------
-# - Get local data set object -
+# - Reassign objects for easier handling -
 #-------------------------------------------------------------------------------
 
-  # Parse expression and evaluate
-  DataSet <- eval(parse(text = SourceDataSetName), envir = parent.frame())
+  DataSet <- SourceDataSet
+  MetaData <- FREDAModule$MetaData
+  Settings <- FREDAModule$Settings
+
+
+#-------------------------------------------------------------------------------
+# - Check validity of settings profiles and prepare settings -
+#-------------------------------------------------------------------------------
+
+  # Auxiliary function that filters settings for specific profiles after checking if passed profile names are valid
+  PrepareSettings <- function(SettingsObject, SettingsLabel, ProfileName)
+  {
+    # Check if passed profile name for current settings object is present/registered in settings data.frame
+      if (nrow(SettingsObject) > 0)
+      {
+          RegisteredProfiles <- unique(SettingsObject %>% pull(Profile))
+          errormessage <- paste0("The profile '", ProfileName, "' does not occur in '", SettingsLabel, "' settings! Please pass one of the following registered profile names: ", paste0("'", RegisteredProfiles, "'", collapse = ", "), ".")
+          if (!(ProfileName %in% RegisteredProfiles)) { stop(errormessage) }
+      }
+
+      return(SettingsObject %>% filter(Profile == ProfileName))
+  }
+
+  # Applying auxiliary function above to all settings objects
+  Settings <- list(RefinementProcess = Settings$RefinementProcess %>% PrepareSettings(SettingsLabel = "RefinementProcess", ProfileName = Profile.RefinementProcess),
+                   DataRemediation = list(Process = Settings$DataRemediation$Process %>% PrepareSettings(SettingsLabel = "DataRemediation", ProfileName = Profile.DataRemediation),
+                                          TransformativeExpressions = Settings$DataRemediation$TransformativeExpressions %>% PrepareSettings(SettingsLabel = "TransformativeExpressions", ProfileName = Profile.TransformativeExpressions),
+                                          StringExtraction = Settings$DataRemediation$StringExtraction %>% PrepareSettings(SettingsLabel = "StringExtraction", ProfileName = Profile.StringExtraction),
+                                          Dictionary = Settings$DataRemediation$Dictionary %>% PrepareSettings(SettingsLabel = "Dictionary", ProfileName = Profile.Dictionary),
+                                          FuzzyStringMatching = Settings$DataRemediation$FuzzyStringMatching %>% PrepareSettings(SettingsLabel = "FuzzyStringMatching", ProfileName = Profile.FuzzyStringMatching)),
+                   FeatureRequirements = Settings$FeatureRequirements %>% PrepareSettings(SettingsLabel = "FeatureRequirements", ProfileName = Profile.FeatureRequirements),
+                   FeatureTracking = Settings$FeatureTracking %>% PrepareSettings(SettingsLabel = "FeatureTracking", ProfileName = Profile.FeatureTracking),
+                   PrimaryTableCleaning = Settings$PrimaryTableCleaning %>% PrepareSettings(SettingsLabel = "PrimaryTableCleaning", ProfileName = Profile.PrimaryTableCleaning),
+                   RecordSubsumption = Settings$RecordSubsumption %>% PrepareSettings(SettingsLabel = "RecordSubsumption", ProfileName = Profile.RecordSubsumption),
+                   SecondaryTableCleaning = Settings$SecondaryTableCleaning %>% PrepareSettings(SettingsLabel = "SecondaryTableCleaning", ProfileName = Profile.SecondaryTableCleaning),
+                   TableNormalization = Settings$TableNormalization %>% PrepareSettings(SettingsLabel = "TableNormalization", ProfileName = Profile.TableNormalization))
 
 
 #-------------------------------------------------------------------------------
@@ -250,7 +217,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
   # Initiate main LOG report
   Report.Log <- Log.New(ProcessingStage = "General",
-                        Message = "Starting Data Curation...",
+                        Message = "Starting Data Refinement...",
                         MessageClass = "Special",
                         PrintMessage = TRUE)
 
@@ -322,9 +289,9 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-# MODULE A)  Structural Harmonization
+# STEP A)  Structural Harmonization
 #===============================================================================
-#   - Add empty tables in data set if they are missing in raw data
+#   - Add empty tables in data set if they are missing in source data
 #   - Recode feature names according to meta data
 #   - Add empty features in case of missing feature names
 #   - Remove unknown features
@@ -364,7 +331,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
   DataSet <- DataSet[TableNames]
 
 
-# Rename features from harmonized raw feature names to curated feature names
+# Rename features from harmonized source feature names to refined feature names
 #-------------------------------------------------------------------------------
 
   # Looping through tables to rename features
@@ -372,7 +339,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                   imap(function(Table, tablename)
                        {
                           # Create named vector to look up matching feature names in meta data ('OldName' = 'NewName')
-                          Lookup <- MetaData$Features %>% filter(TableName.Refined == tablename) %>% pull(FeatureName.Raw)
+                          Lookup <- MetaData$Features %>% filter(TableName.Refined == tablename) %>% pull(FeatureName.Source)
                           names(Lookup) <- MetaData$Features %>% filter(TableName.Refined == tablename) %>% pull(FeatureName.Refined)
 
                           if (length(Table) > 0)
@@ -450,7 +417,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-# MODULE B)  Data Set Checks
+# STEP B)  Data Set Checks
 #===============================================================================
 
   # Log report: New processing stage
@@ -531,7 +498,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-# MODULE C)  Primary Table Cleaning
+# STEP C)  Primary Table Cleaning
 #===============================================================================
 #   1) Creating auxiliary data.frame 'DataSetRoot' by linking all tables with Role 'Seed' and 'Root'
 #   2) Table cleaning with detection/removal of:
@@ -550,7 +517,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                     PrintMessage = TRUE))
 
 #===============================================================================
-#   MODULE C1)  Create and clean 'DataSetRoot'
+#   STEP C1)  Create and clean 'DataSetRoot'
 #===============================================================================
 #     - Create auxiliary data.frame containing all eligible 'Root subjects' by merging 'Seed' table with all 'Root' tables (in case 'Root' does not only consist of 'Seed')
 #     - Filter out any record that has missing values in features marked as required in meta data (thereby also removing 'rogue'/unlinked patient or diagnosis records because this way every patient needs to have at least one related diagnosis and vice versa)
@@ -580,31 +547,31 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                 PrintMessage = FALSE))
 
   # Clean DataSetRoot
-  if ((Settings$CurationProcess %>% filter(Table == ".DataSetRoot") %>% pull(PrimaryTableCleaning)) == TRUE)
+  if ((Settings$RefinementProcess %>% filter(Table == ".DataSetRoot") %>% pull(PrimaryTableCleaning)) == TRUE)
   {
-      # dsFreda::CleanTable() returns a list object with the elements 'Table', 'NonconformingRecords', 'Counter' and 'Log'
-      PrimaryTableCleaning.DataSetRoot <- dsFreda::CleanTable(Table = DataSetRoot,
-                                                              TableName = ".DataSetRoot",
-                                                              PrimaryKey = RootPrimaryKey,
-                                                              RootSubjectKey = RootPrimaryKey,
-                                                              SeedSubjectKey = SeedPrimaryKey,
-                                                              PrimaryKeyIgnoredInRedundancyCheck = FALSE,      # This setting is important because it considers the semantic meaning of root primary keys (e.g. two different DiagnosisIDs of the same patient should stay truly distinct, because they can be related to different diagnostic procedures)
-                                                              EmptyStrings.Detect = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Detect),
-                                                              EmptyStrings.Substitute = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Substitute),
-                                                              EmptyStrings.Substitution = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Substitution),
-                                                              DuplicateRecords.Detect = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(DuplicateRecords.Detect),
-                                                              DuplicateRecords.Remove = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(DuplicateRecords.Remove),
-                                                              FeatureRequirements = Settings$FeatureRequirements %>% filter(Table %in% RootTableNames),
-                                                              ValueAvailabilityViolations.Detect = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(ValueAvailabilityViolations.Detect),
-                                                              ValueAvailabilityViolations.Remove = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(ValueAvailabilityViolations.Remove),
-                                                              PrintMessages = TRUE)
+      # Freda::CleanTable() returns a list object with the elements 'Table', 'NonconformingRecords', 'Counter' and 'Log'
+      PrimaryTableCleaning.DataSetRoot <- Freda::CleanTable(Table = DataSetRoot,
+                                                            TableName = ".DataSetRoot",
+                                                            PrimaryKey = RootPrimaryKey,
+                                                            RootSubjectKey = RootPrimaryKey,
+                                                            SeedSubjectKey = SeedPrimaryKey,
+                                                            PrimaryKeyIgnoredInRedundancyCheck = FALSE,      # This setting is important because it considers the semantic meaning of root primary keys (e.g. two different DiagnosisIDs of the same patient should stay truly distinct, because they can be related to different diagnostic procedures)
+                                                            EmptyStrings.Detect = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Detect),
+                                                            EmptyStrings.Substitute = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Substitute),
+                                                            EmptyStrings.Substitution = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Substitution),
+                                                            DuplicateRecords.Detect = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(DuplicateRecords.Detect),
+                                                            DuplicateRecords.Remove = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(DuplicateRecords.Remove),
+                                                            FeatureRequirements = Settings$FeatureRequirements %>% filter(Table %in% RootTableNames),
+                                                            ValueAvailabilityViolations.Detect = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(ValueAvailabilityViolations.Detect),
+                                                            ValueAvailabilityViolations.Remove = Settings$PrimaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(ValueAvailabilityViolations.Remove),
+                                                            PrintMessages = TRUE)
 
       # Assess new .DataSetRoot record and root/seed subject counts
-      StageCounter.DataSetRoot <-  dsFreda::TrackCounts(DataSet.Prior = list(.DataSetRoot = DataSetRoot),
-                                                        TransformationReturn = list(.DataSetRoot = PrimaryTableCleaning.DataSetRoot),
-                                                        RootSubjectKeys = list(.DataSetRoot = RootPrimaryKey),
-                                                        SeedSubjectKey = SeedPrimaryKey,
-                                                        PrintMessages = FALSE) %>%
+      StageCounter.DataSetRoot <-  Freda::TrackCounts(DataSet.Prior = list(.DataSetRoot = DataSetRoot),
+                                                      TransformationReturn = list(.DataSetRoot = PrimaryTableCleaning.DataSetRoot),
+                                                      RootSubjectKeys = list(.DataSetRoot = RootPrimaryKey),
+                                                      SeedSubjectKey = SeedPrimaryKey,
+                                                      PrintMessages = FALSE) %>%
                                         mutate(ProcessingStage = "PRE Primary Table Cleaning",
                                                ProcessTopic = "COUNT",
                                                CountLevel = "Monitor")
@@ -633,7 +600,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE C2)  Table Cleaning
+#   STEP C2)  Table Cleaning
 #===============================================================================
 #     - Looping through all tables in 'DataSet' to perform table cleaning
 #-------------------------------------------------------------------------------
@@ -647,7 +614,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                               imap(function(Table, tablename)
                                    {
                                       # Check in settings if primary table cleaning should be executed for current table
-                                      if ((Settings$CurationProcess %>% filter(Table == tablename) %>% pull(PrimaryTableCleaning)) == FALSE)
+                                      if ((Settings$RefinementProcess %>% filter(Table == tablename) %>% pull(PrimaryTableCleaning)) == FALSE)
                                       {
                                           CurrentTableCleaning <- list(Table = Table,
                                                                        NonconformingRecords = NULL,
@@ -682,24 +649,24 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                           if (tablename %in% RootTableNames) { PrimaryKeyIgnoredInRedundancyCheck <- FALSE }
 
                                           # Perform table cleaning (this returns a list object with the elements 'Table', 'NonconformingRecords', 'Counter' and 'Log')
-                                          CurrentTableCleaning <- dsFreda::CleanTable(Table = Table,
-                                                                                      TableName = tablename,
-                                                                                      PrimaryKey = PrimaryKeys[[tablename]],
-                                                                                      RootSubjectKey = RootSubjectKeys[[tablename]],
-                                                                                      SeedSubjectKey = SeedPrimaryKey,
-                                                                                      PrimaryKeyIgnoredInRedundancyCheck = PrimaryKeyIgnoredInRedundancyCheck,
-                                                                                      DataSetRoot = DataSetRoot,
-                                                                                      UnlinkedRecords.Detect = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(UnlinkedRecords.Detect),
-                                                                                      UnlinkedRecords.Remove = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(UnlinkedRecords.Remove),
-                                                                                      EmptyStrings.Detect = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Detect),
-                                                                                      EmptyStrings.Substitute = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Substitute),
-                                                                                      EmptyStrings.Substitution = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Substitution),
-                                                                                      DuplicateRecords.Detect = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(DuplicateRecords.Detect),
-                                                                                      DuplicateRecords.Remove = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(DuplicateRecords.Remove),
-                                                                                      FeatureRequirements = Settings$FeatureRequirements %>% filter(Table == tablename),
-                                                                                      ValueAvailabilityViolations.Detect = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(ValueAvailabilityViolations.Detect),
-                                                                                      ValueAvailabilityViolations.Remove = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(ValueAvailabilityViolations.Remove),
-                                                                                      PrintMessages = TRUE)
+                                          CurrentTableCleaning <- Freda::CleanTable(Table = Table,
+                                                                                    TableName = tablename,
+                                                                                    PrimaryKey = PrimaryKeys[[tablename]],
+                                                                                    RootSubjectKey = RootSubjectKeys[[tablename]],
+                                                                                    SeedSubjectKey = SeedPrimaryKey,
+                                                                                    PrimaryKeyIgnoredInRedundancyCheck = PrimaryKeyIgnoredInRedundancyCheck,
+                                                                                    DataSetRoot = DataSetRoot,
+                                                                                    UnlinkedRecords.Detect = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(UnlinkedRecords.Detect),
+                                                                                    UnlinkedRecords.Remove = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(UnlinkedRecords.Remove),
+                                                                                    EmptyStrings.Detect = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Detect),
+                                                                                    EmptyStrings.Substitute = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Substitute),
+                                                                                    EmptyStrings.Substitution = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Substitution),
+                                                                                    DuplicateRecords.Detect = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(DuplicateRecords.Detect),
+                                                                                    DuplicateRecords.Remove = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(DuplicateRecords.Remove),
+                                                                                    FeatureRequirements = Settings$FeatureRequirements %>% filter(Table == tablename),
+                                                                                    ValueAvailabilityViolations.Detect = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(ValueAvailabilityViolations.Detect),
+                                                                                    ValueAvailabilityViolations.Remove = Settings$PrimaryTableCleaning %>% filter(Table == tablename) %>% pull(ValueAvailabilityViolations.Remove),
+                                                                                    PrintMessages = TRUE)
 
                                           # Add processing stage to COUNTER and LOG
                                           CurrentTableCleaning$Counter <- CurrentTableCleaning$Counter %>%
@@ -731,10 +698,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
   # Assess new table record and root subject counts
   StageCounter <- DataSet %>%
-                      dsFreda::TrackCounts(TransformationReturn = PrimaryTableCleaning,
-                                           RootSubjectKeys = RootSubjectKeys,
-                                           SeedSubjectKey = SeedPrimaryKey,
-                                           PrintMessages = TRUE) %>%
+                      Freda::TrackCounts(TransformationReturn = PrimaryTableCleaning,
+                                         RootSubjectKeys = RootSubjectKeys,
+                                         SeedSubjectKey = SeedPrimaryKey,
+                                         PrintMessages = TRUE) %>%
                       mutate(ProcessingStage = "Primary Table Cleaning",
                              ProcessTopic = "COUNT",
                              CountLevel = "Stage")
@@ -777,7 +744,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-# MODULE D)  Table Normalization
+# STEP D)  Table Normalization
 #===============================================================================
 #   - Perform procedures like 'split and expand' where necessary (as determined by settings / meta data)
 #-------------------------------------------------------------------------------
@@ -809,7 +776,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                                                         PrintMessage = TRUE))
 
                                     # Check in settings if normalization procedures should be omitted for current table
-                                    } else if ((Settings$CurationProcess %>% filter(Table == tablename) %>% pull(TableNormalization)) == FALSE) {
+                                    } else if ((Settings$RefinementProcess %>% filter(Table == tablename) %>% pull(TableNormalization)) == FALSE) {
 
                                         CurrentTableNormalization <- list(Table = Table,
                                                                           Counter = NULL,
@@ -838,12 +805,12 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
                                         # Perform table normalization operations (this returns a list object with the elements 'Table', 'Counter' and 'Log')
                                         CurrentTableNormalization <- Table %>%
-                                                                        dsFreda::NormalizeTable(TableName = tablename,
-                                                                                                PrimaryKey = PrimaryKeys[[tablename]],
-                                                                                                RootSubjectKey = RootSubjectKeys[[tablename]],
-                                                                                                SeedSubjectKey = SeedPrimaryKey,
-                                                                                                RuleSet = NormalizationRules,
-                                                                                                PrintMessages = TRUE)
+                                                                        Freda::NormalizeTable(TableName = tablename,
+                                                                                              PrimaryKey = PrimaryKeys[[tablename]],
+                                                                                              RootSubjectKey = RootSubjectKeys[[tablename]],
+                                                                                              SeedSubjectKey = SeedPrimaryKey,
+                                                                                              RuleSet = NormalizationRules,
+                                                                                              PrintMessages = TRUE)
 
                                         # Add processing stage to COUNTER and LOG
                                         if (length(CurrentTableNormalization$Counter) > 0)
@@ -878,10 +845,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
   # Assess new table record and root/seed subject counts
   StageCounter <- DataSet %>%
-                      dsFreda::TrackCounts(TransformationReturn = TableNormalization,
-                                           RootSubjectKeys = RootSubjectKeys,
-                                           SeedSubjectKey = SeedPrimaryKey,
-                                           PrintMessages = TRUE) %>%
+                      Freda::TrackCounts(TransformationReturn = TableNormalization,
+                                         RootSubjectKeys = RootSubjectKeys,
+                                         SeedSubjectKey = SeedPrimaryKey,
+                                         PrintMessages = TRUE) %>%
                       mutate(ProcessingStage = "Table Normalization",
                              ProcessTopic = "COUNT",
                              CountLevel = "Stage")
@@ -920,7 +887,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-# MODULE E)  Data Harmonization
+# STEP E)  Data Harmonization
 #===============================================================================
 #   The data harmonization process consists of the following steps:
 #     - Data remediation
@@ -929,7 +896,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 #     - Data remediation finalization
 #-------------------------------------------------------------------------------
 #   2) Definition of features to monitor during Transformation
-#   3) Tracking of raw feature values
+#   3) Tracking of source feature values
 #   4) Data remediation
 #   5) Tracking of remediated feature values
 #   6) Data recoding and formatting
@@ -948,7 +915,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                     PrintMessage = TRUE))
 
 #===============================================================================
-#   MODULE E 1)  Conversion of all non-numeric and non-logical features into type character prior to definitive formatting
+#   STEP E 1)  Conversion of all non-numeric and non-logical features into type character prior to definitive formatting
 #===============================================================================
 
   # DataSet <- DataSet %>%
@@ -967,11 +934,11 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE E 2)  Definition of tracked features and their sets of eligible values
+#   STEP E 2)  Definition of tracked features and their sets of eligible values
 #===============================================================================
-#     - Create meta data on eligible value sets of features to be tracked during Curation process
+#     - Create meta data on eligible value sets of features to be tracked during Refinement process
 #     - Element object syntax: List of vectors
-#         - Vector names = Name of feature to be monitored during Curation (Transformation)
+#         - Vector names = Name of feature to be monitored during Refinement (Transformation)
 #         - Vector values = Set of eligible values obtained from meta data / passed rule set
 #     - If a feature should be monitored but has no specific set of eligible values, set it NULL
 #-------------------------------------------------------------------------------
@@ -990,7 +957,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                                       Values <- MetaData$Values %>%
                                                                                         filter(Table == tablename,
                                                                                                FeatureName.Refined == featurename) %>%
-                                                                                        select(Value.Raw,
+                                                                                        select(Value.Source,
                                                                                                Value.Refined)
 
                                                                       if (nrow(Values) == 0) { return(NULL) } else { return(Values) }
@@ -1005,9 +972,9 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE E 3)  Track feature values of raw data
+#   STEP E 3)  Track feature values of source data
 #===============================================================================
-#     - Get unique raw values and their frequencies for monitoring
+#     - Get unique source data values and their frequencies for monitoring
 #     - Copy values of monitored features and mark them with TrackID that has correspondent in actually processed data.frames
 #-------------------------------------------------------------------------------
 
@@ -1015,7 +982,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
   stopifnot("Internal ERROR: Names of 'TrackingMetaData' and 'DataSet' must be exactly aligned." = (all(names(TrackingMetaData) == names(DataSet))))
 
   # Initiate list of data.frames containing transformation tracks
-  # First step: Store copied raw values of monitored features and mark them with 'TrackID' to track them along transformation process
+  # First step: Store copied source data values of monitored features and mark them with 'TrackID' to track them along transformation process
   TransformationTracks <- map2(.x = DataSet,
                                .y = TrackingMetaData,
                                .f = function(Table, TableTrackingMetaData)
@@ -1028,30 +995,30 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
                                             Table %>%
                                                  select(names(TableTrackingMetaData)) %>%
-                                                 rename_with(.fn = ~ str_c(., "___Raw"),   # Three underscores for later use in pivot_longer()
+                                                 rename_with(.fn = ~ str_c(., "___Source"),   # Three underscores for later use in pivot_longer()
                                                              .cols = everything()) %>%
                                                  mutate(.TrackID = row_number(), .before = 1)   # Create TrackID to enable correct mapping and further processing
                                        }
                                     })
 
-  ValueCounts.Raw <- map2(.x = DataSet,
-                          .y = TrackingMetaData,
-                          .f = function(Table, TableTrackingMetaData)
-                               {
-                                  Table %>%
-                                      dsFreda::TrackValueCounts(FeatureNames = names(TableTrackingMetaData),
-                                                                TransformationStage = "Raw") %>%
-                                      select(Feature,
-                                             Value,
-                                             Frequency) %>%
-                                      rename(Value.Raw = Value,
-                                             Count.Raw = Frequency)
-                               })
+  ValueCounts.Source <- map2(.x = DataSet,
+                             .y = TrackingMetaData,
+                             .f = function(Table, TableTrackingMetaData)
+                                  {
+                                      Table %>%
+                                          Freda::TrackValueCounts(FeatureNames = names(TableTrackingMetaData),
+                                                                  TransformationStage = "Source") %>%
+                                          select(Feature,
+                                                 Value,
+                                                 Frequency) %>%
+                                          rename(Value.Source = Value,
+                                                 Count.Source = Frequency)
+                                  })
 
 
 
 #===============================================================================
-#   MODULE E 4)  Data Remediation
+#   STEP E 4)  Data Remediation
 #===============================================================================
 #     Step-wise approach incorporating the following methods (feature-specific selection and order defined by passed settings)
 #       - Transformative expressions
@@ -1085,7 +1052,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                              PrintMessage = TRUE)
 
                                   # Check in settings if normalization procedures should be executed for current table
-                                  } else if ((Settings$CurationProcess %>% filter(Table == tablename) %>% pull(DataRemediation)) == FALSE) {
+                                  } else if ((Settings$RefinementProcess %>% filter(Table == tablename) %>% pull(DataRemediation)) == FALSE) {
 
                                       TableReport <- Log.New(Table = tablename,
                                                              ProcessTopic = "Data Remediation",
@@ -1117,14 +1084,14 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                       # Loop through table features that are supposed to be remediated
                                       for (featurename in RemediationProcess$Feature)
                                       {
-                                          # Get set of eligible values (raw stage) for current feature
-                                          EligibleValueSet.Raw <- MetaData$Values %>%
+                                          # Get set of eligible values (source stage) for current feature
+                                          EligibleValueSet.Source <- MetaData$Values %>%
                                                                       filter(Table == tablename,
                                                                              FeatureName.Refined == featurename) %>%
-                                                                      pull(Value.Raw)   # Eligible Values PRIOR to recoding
+                                                                      pull(Value.Source)   # Eligible Values PRIOR to recoding
 
                                           # Count ineligible values in current feature prior to data remediation
-                                          CountIneligibleValues = sum(!is.na(Table[[featurename]]) & (Table[[featurename]] %notin% EligibleValueSet.Raw))
+                                          CountIneligibleValues = sum(!is.na(Table[[featurename]]) & (Table[[featurename]] %notin% EligibleValueSet.Source))
 
                                           # Check if there are no ineligible feature values needing remediation
                                           if (is.na(CountIneligibleValues) | CountIneligibleValues == 0)
@@ -1166,15 +1133,15 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                                           as.list()
 
                                               # EXECUTE data remediation for current feature
-                                              Table[[featurename]] <- dsFreda::RemediateData(Feature = Table[[featurename]],
-                                                                                             FeatureName = featurename,
-                                                                                             ContextDataFrame = Table,
-                                                                                             Methods = Methods,
-                                                                                             EligibleValueSet = EligibleValueSet.Raw,
-                                                                                             TransformativeExpressions = TransformativeExpressions,
-                                                                                             StringExtraction = StringExtraction,
-                                                                                             Dictionary = Dictionary,
-                                                                                             FuzzyStringMatching = FuzzyStringMatching)
+                                              Table[[featurename]] <- Freda::RemediateData(Feature = Table[[featurename]],
+                                                                                           FeatureName = featurename,
+                                                                                           ContextDataFrame = Table,
+                                                                                           Methods = Methods,
+                                                                                           EligibleValueSet = EligibleValueSet.Source,
+                                                                                           TransformativeExpressions = TransformativeExpressions,
+                                                                                           StringExtraction = StringExtraction,
+                                                                                           Dictionary = Dictionary,
+                                                                                           FuzzyStringMatching = FuzzyStringMatching)
 
                                               # Create Feature LOG report
                                               FeatureReport <- Log.New(Table = tablename,
@@ -1215,10 +1182,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE E 5)  Track feature values after Remediation
+#   STEP E 5)  Track feature values after Remediation
 #===============================================================================
 
-# Map raw values to their remediated state to get transformation tracks
+# Map source data values to their remediated state to get transformation tracks
 #===============================================================================
 
   # Internal guard condition: Make sure lists have exactly the same element names (in aligned order)
@@ -1242,7 +1209,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
                                             CurrentTransformationTracks %>%
                                                 left_join(RemediatedValues, by = join_by(.TrackID)) %>%
-                                                distinct(pick(contains("___Raw")), .keep_all = TRUE)
+                                                distinct(pick(contains("___Source")), .keep_all = TRUE)
                                        }
                                    })
 
@@ -1258,8 +1225,8 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                  .f = function(Table, TableTrackingMetaData)
                                       {
                                           Table %>%
-                                              dsFreda::TrackValueCounts(FeatureNames = names(TableTrackingMetaData),
-                                                                        TransformationStage = "Remediated") %>%
+                                              Freda::TrackValueCounts(FeatureNames = names(TableTrackingMetaData),
+                                                                      TransformationStage = "Remediated") %>%
                                               select(Feature,
                                                      Value,
                                                      Frequency) %>%
@@ -1270,9 +1237,9 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE E 6)  Data recoding
+#   STEP E 6)  Data recoding
 #===============================================================================
-#     - Recoding data using dsFreda::RecodeData() based on specifications in MetaData$Values
+#     - Recoding data using Freda::RecodeData() based on specifications in MetaData$Values
 #     - RecodeData() uses a dictionary in the form of a named vector to perform recoding on a target vector
 #-------------------------------------------------------------------------------
 
@@ -1309,12 +1276,12 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                       RecodingDictionaries <- MetaData$Values %>%
                                                                   filter(Table == tablename) %>%
                                                                   split(.$FeatureName.Refined) %>%      # 'split' is a base function and needs '.$' to address 'FeatureName.Refined'
-                                                                  map(\(Values) with(Values, set_names(Value.Refined, Value.Raw)))
+                                                                  map(\(Values) with(Values, set_names(Value.Refined, Value.Source)))
 
                                       for (featurename in FeaturesWithValueSets)
                                       {
-                                          Table[[featurename]] <- dsFreda::RecodeData(TargetVector = Table[[featurename]],
-                                                                                      Dictionary = RecodingDictionaries[[featurename]])
+                                          Table[[featurename]] <- Freda::RecodeData(TargetVector = Table[[featurename]],
+                                                                                    Dictionary = RecodingDictionaries[[featurename]])
                                       }
 
                                       Report.Recoding <- Log.New(Table = tablename,
@@ -1348,10 +1315,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE E 7)  Track feature values after Recoding
+#   STEP E 7)  Track feature values after Recoding
 #===============================================================================
 
-# Map raw values to their recoded state to get transformation tracks
+# Map source data values to their recoded state to get transformation tracks
 #===============================================================================
 
   # Internal guard condition: Make sure lists have exactly the same element names (in aligned order)
@@ -1376,7 +1343,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                             TableTransformationTracks %>%
                                                 left_join(RecodedValues,
                                                           by = join_by(.TrackID)) %>%
-                                                distinct(pick(contains("___Raw")), .keep_all = TRUE)
+                                                distinct(pick(contains("___Source")), .keep_all = TRUE)
                                         }
                                    })
 
@@ -1392,8 +1359,8 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                               .f = function(Table, TableTrackingMetaData)
                                    {
                                       Table %>%
-                                         dsFreda::TrackValueCounts(FeatureNames = names(TableTrackingMetaData),
-                                                                   TransformationStage = "Recoded") %>%
+                                         Freda::TrackValueCounts(FeatureNames = names(TableTrackingMetaData),
+                                                                 TransformationStage = "Recoded") %>%
                                          select(Feature,
                                                 Value,
                                                 Frequency) %>%
@@ -1404,7 +1371,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE E 8)  Finalize data remediation using dsFreda::FinalizeDataRemediation()
+#   STEP E 8)  Finalize data remediation using Freda::FinalizeDataRemediation()
 #===============================================================================
 #     - (Optional / Default) Exclusion of ineligible data (data that could not be transformed)
 #     - (Optional) Conversion to ordered factor
@@ -1425,7 +1392,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                                              PrintMessage = TRUE)
 
                                               # Check if remediation finalization is intended and applicable for current table
-                                              if (Settings$CurationProcess %>% filter(Table == tablename) %>% pull(DataRemediation) == TRUE &&
+                                              if (Settings$RefinementProcess %>% filter(Table == tablename) %>% pull(DataRemediation) == TRUE &&
                                                   length(Table) > 0 && nrow(Table) > 0)
                                               {
                                                   # Get features that are supposed to be remediated from settings
@@ -1450,10 +1417,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                               UnremediatedValues.Substitute <- RemediationProcess %>% filter(Feature == featurename) %>% pull(UnremediatedValues.Substitute)
                                                               UnremediatedValues.Substitution <- RemediationProcess %>% filter(Feature == featurename) %>% pull(UnremediatedValues.Substitution)
 
-                                                              Table[[featurename]] <- dsFreda::FinalizeDataRemediation(TargetVector = Table[[featurename]],
-                                                                                                                       EligibleValueSet = EligibleValueSet,
-                                                                                                                       UnremediatedValues.Substitute = UnremediatedValues.Substitute,
-                                                                                                                       UnremediatedValues.Substitution = UnremediatedValues.Substitution)
+                                                              Table[[featurename]] <- Freda::FinalizeDataRemediation(TargetVector = Table[[featurename]],
+                                                                                                                     EligibleValueSet = EligibleValueSet,
+                                                                                                                     UnremediatedValues.Substitute = UnremediatedValues.Substitute,
+                                                                                                                     UnremediatedValues.Substitution = UnremediatedValues.Substitution)
 
                                                               FeatureReport.Log <- Log.New(ProcessingStage = "Data Harmonization",
                                                                                            Table = tablename,
@@ -1494,9 +1461,9 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE E 9)  Data formatting
+#   STEP E 9)  Data formatting
 #===============================================================================
-#     - Format / Re-type data using dsFreda::FormatData() based on specifications in MetaData$Features
+#     - Format / Re-type data using Freda::FormatData() based on specifications in MetaData$Features
 #-------------------------------------------------------------------------------
 
   DataFormatting <- DataSet %>%
@@ -1525,7 +1492,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                         {
                                             Table <- Table %>%
                                                           mutate(across(all_of(FeatureTypes$Feature[i]),
-                                                                        ~ dsFreda::FormatData(.x, FeatureTypes$Type[i])))
+                                                                        ~ Freda::FormatData(.x, FeatureTypes$Type[i])))
                                         }
 
                                         Report.Formatting <- Log.New(Table = tablename,
@@ -1559,10 +1526,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE E 10)  Track feature values after finalized Remediation
+#   STEP E 10)  Track feature values after finalized Remediation
 #===============================================================================
 
-# Map raw values to their finalized state to get transformation tracks
+# Map source data values to their finalized state to get transformation tracks
 #===============================================================================
 
   # Internal guard condition: Make sure lists have exactly the same element names (in aligned order)
@@ -1587,7 +1554,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                             TableTransformationTracks %>%
                                                 left_join(FinalizedValues,
                                                           by = join_by(.TrackID)) %>%
-                                                distinct(pick(contains("___Raw")), .keep_all = TRUE)
+                                                distinct(pick(contains("___Source")), .keep_all = TRUE)
                                         }
                                     })
 
@@ -1603,8 +1570,8 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                             .f = function(Table, TableTrackingMetaData)
                                  {
                                      Table %>%
-                                        dsFreda::TrackValueCounts(FeatureNames = names(TableTrackingMetaData),
-                                                                  TransformationStage = "Final") %>%
+                                        Freda::TrackValueCounts(FeatureNames = names(TableTrackingMetaData),
+                                                                TransformationStage = "Final") %>%
                                         select(Feature,
                                                Value,
                                                Frequency) %>%
@@ -1615,7 +1582,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE E 11)  Merge monitor objects into coherent summaries
+#   STEP E 11)  Merge monitor objects into coherent summaries
 #===============================================================================
 
 # Summarize Transformation Tracks
@@ -1651,19 +1618,19 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                                                         values_from = Value) %>%
                                                                      select(-.TrackID) %>%
                                                                      distinct() %>%
-                                                                     rename(Value.Raw = Raw,
+                                                                     rename(Value.Source = Source,
                                                                             Value.Remediated = Remediated,
                                                                             Value.Recoded = Recoded,
                                                                             Value.Final = Final) %>%
                                                                      left_join(UnremediatedValues.SubstitutionSettings, by = join_by(Feature)) %>%
                                                                      rowwise() %>%
                                                                      mutate(IsOccurring = TRUE,
-                                                                            IsEligible.Raw = ifelse(is.na(Value.Raw) | is.null(TableTrackingMetaData[[Feature]]),      # If value is NA or if there is no set of eligible values, set variable NA...
+                                                                            IsEligible.Source = ifelse(is.na(Value.Source) | is.null(TableTrackingMetaData[[Feature]]),      # If value is NA or if there is no set of eligible values, set variable NA...
                                                                                                     NA,
-                                                                                                    Value.Raw %in% TableTrackingMetaData[[Feature]]$Value.Raw),      # ... else check if specific row value is in set of eligible values
+                                                                                                    Value.Source %in% TableTrackingMetaData[[Feature]]$Value.Source),      # ... else check if specific row value is in set of eligible values
                                                                             IsEligible.Remediated = ifelse(is.na(Value.Remediated) | is.null(TableTrackingMetaData[[Feature]]),
                                                                                                            NA,
-                                                                                                           Value.Remediated %in% TableTrackingMetaData[[Feature]]$Value.Raw),
+                                                                                                           Value.Remediated %in% TableTrackingMetaData[[Feature]]$Value.Source),
                                                                             IsEligible.Recoded = ifelse(is.na(Value.Recoded) | is.null(TableTrackingMetaData[[Feature]]),
                                                                                                         NA,
                                                                                                         Value.Recoded %in% TableTrackingMetaData[[Feature]]$Value.Refined),
@@ -1681,9 +1648,9 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                       for (i in 1:length(TableTrackingMetaData))   # Loop through all monitored features of a table
                                                       {
                                                          AllEligibleValues <- tibble(Feature = names(TableTrackingMetaData)[i],
-                                                                                     Value.Raw = TableTrackingMetaData[[i]]$Value.Raw,
+                                                                                     Value.Source = TableTrackingMetaData[[i]]$Value.Source,
                                                                                      IsOccurring = FALSE,
-                                                                                     IsEligible.Raw = TRUE)
+                                                                                     IsEligible.Source = TRUE)
 
                                                          Summary <- bind_rows(Summary,
                                                                               AllEligibleValues)
@@ -1693,15 +1660,15 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                       # Result: All eligible values are included in summary, regardless of occurrence
                                                       #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
                                                       Summary <- Summary %>%
-                                                                    group_by(Feature, Value.Raw) %>%
+                                                                    group_by(Feature, Value.Source) %>%
                                                                         arrange(desc(IsOccurring), .by_group = TRUE) %>%
                                                                         slice_head() %>%
                                                                     ungroup() %>%
                                                                     arrange(Feature,
                                                                             desc(IsOccurring),
-                                                                            desc(IsEligible.Raw),
+                                                                            desc(IsEligible.Source),
                                                                             desc(IsEligible.Remediated),
-                                                                            Value.Raw)
+                                                                            Value.Source)
 
                                                       return(Summary)
                                                  }
@@ -1715,12 +1682,12 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
   # Create data harmonization MONITOR on VALUE-LEVEL
   Monitor.DataHarmonization.ValueLevel <- pmap(.l = list(TransformationTracks.Summaries,
-                                                         ValueCounts.Raw,
+                                                         ValueCounts.Source,
                                                          ValueCounts.Remediated,
                                                          ValueCounts.Recoded,
                                                          ValueCounts.Final),
                                                .f = function(TableTransformationTracks.Summary,
-                                                             TableValueCounts.Raw,
+                                                             TableValueCounts.Source,
                                                              TableValueCounts.Remediated,
                                                              TableValueCounts.Recoded,
                                                              TableValueCounts.Final)
@@ -1732,7 +1699,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                        } else {
 
                                                            TableTransformationTracks.Summary %>%
-                                                               left_join(TableValueCounts.Raw, by = c("Feature", "Value.Raw")) %>%
+                                                               left_join(TableValueCounts.Source, by = c("Feature", "Value.Source")) %>%
                                                                left_join(TableValueCounts.Remediated, by = c("Feature", "Value.Remediated")) %>%
                                                                left_join(TableValueCounts.Recoded, by = c("Feature", "Value.Recoded")) %>%
                                                                left_join(TableValueCounts.Final, by = c("Feature", "Value.Final")) %>%
@@ -1744,9 +1711,9 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                                                               .default = Count.Final)) %>%
                                                                arrange(Feature,
                                                                        desc(IsOccurring),
-                                                                       desc(IsEligible.Raw),
+                                                                       desc(IsEligible.Source),
                                                                        desc(IsEligible.Remediated),
-                                                                       Value.Raw)
+                                                                       Value.Source)
                                                        }
                                                     })
 
@@ -1761,22 +1728,22 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                       } else {
 
                                                           return(TableMonitor %>%
-                                                                      mutate(NeedsHarmonization = case_when(IsOccurring == TRUE & IsEligible.Raw == FALSE ~ TRUE,
-                                                                                                            IsOccurring == TRUE & IsEligible.Raw == TRUE ~ FALSE,
+                                                                      mutate(NeedsHarmonization = case_when(IsOccurring == TRUE & IsEligible.Source == FALSE ~ TRUE,
+                                                                                                            IsOccurring == TRUE & IsEligible.Source == TRUE ~ FALSE,
                                                                                                             .default = NA),
-                                                                             SuccessfullyHarmonized = case_when(IsOccurring == TRUE & IsEligible.Raw == FALSE & IsEligible.Final == TRUE ~ TRUE,
-                                                                                                                IsOccurring == TRUE & IsEligible.Raw == FALSE & IsEligible.Final == FALSE ~ FALSE,
+                                                                             SuccessfullyHarmonized = case_when(IsOccurring == TRUE & IsEligible.Source == FALSE & IsEligible.Final == TRUE ~ TRUE,
+                                                                                                                IsOccurring == TRUE & IsEligible.Source == FALSE & IsEligible.Final == FALSE ~ FALSE,
                                                                                                                 .default = NA)) %>%
                                                                       select(Feature,
-                                                                             Value.Raw,
-                                                                             Count.Raw,
+                                                                             Value.Source,
+                                                                             Count.Source,
                                                                              IsOccurring,
-                                                                             IsEligible.Raw,
+                                                                             IsEligible.Source,
                                                                              NeedsHarmonization,
                                                                              SuccessfullyHarmonized,
                                                                              Value.Final) %>%
-                                                                      rename(c(Count = "Count.Raw",
-                                                                               IsEligible = "IsEligible.Raw")))
+                                                                      rename(c(Count = "Count.Source",
+                                                                               IsEligible = "IsEligible.Source")))
                                                       }
                                                   })
 
@@ -1841,10 +1808,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                               TableMonitor <- TableMonitor %>%
                                                                                   filter(Feature %in% names(TableTrackingMetaData))
 
-                                                              SummaryRaw <- TableMonitor %>%
-                                                                                group_by(Feature, IsEligible.Raw) %>%
-                                                                                    summarize(Count.Raw = sum(Count.Raw, na.rm = TRUE)) %>%
-                                                                                    rename(Eligibility = IsEligible.Raw)
+                                                              SummarySource <- TableMonitor %>%
+                                                                                group_by(Feature, IsEligible.Source) %>%
+                                                                                    summarize(Count.Source = sum(Count.Source, na.rm = TRUE)) %>%
+                                                                                    rename(Eligibility = IsEligible.Source)
 
                                                               SummaryRemediated <- TableMonitor %>%
                                                                                         distinct(pick(Feature, Value.Remediated), .keep_all = TRUE) %>%
@@ -1864,7 +1831,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                                                       summarize(Count.Final = sum(Count.Final, na.rm = TRUE)) %>%
                                                                                       rename(Eligibility = IsEligible.Final)
 
-                                                              Overview <- SummaryRaw %>%
+                                                              Overview <- SummarySource %>%
                                                                               full_join(SummaryRemediated, by = join_by(Feature, Eligibility)) %>%
                                                                               full_join(SummaryRecoded, by = join_by(Feature, Eligibility)) %>%
                                                                               full_join(SummaryFinal, by = join_by(Feature, Eligibility)) %>%
@@ -1904,14 +1871,14 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
                                                             return(TableMonitor %>%
                                                                         group_by(Feature) %>%
-                                                                            summarize(CountValues = sum(Count.Raw, na.rm = TRUE),
-                                                                                      CountValues.NonMissing = sum(Count.Raw[Eligibility != "Missing"], na.rm = TRUE),
-                                                                                      CountValues.Ineligible.Raw = Count.Raw[Eligibility == "Ineligible"],
+                                                                            summarize(CountValues = sum(Count.Source, na.rm = TRUE),
+                                                                                      CountValues.NonMissing = sum(Count.Source[Eligibility != "Missing"], na.rm = TRUE),
+                                                                                      CountValues.Ineligible.Source = Count.Source[Eligibility == "Ineligible"],
                                                                                       CountValues.Ineligible.Final = Count.Final[Eligibility == "Ineligible"],
-                                                                                      CountValues.Harmonized = CountValues.Ineligible.Raw - CountValues.Ineligible.Final,
-                                                                                      ProportionValues.Harmonized = ifelse(is.na(CountValues.Ineligible.Raw) | CountValues.Ineligible.Raw == 0,
+                                                                                      CountValues.Harmonized = CountValues.Ineligible.Source - CountValues.Ineligible.Final,
+                                                                                      ProportionValues.Harmonized = ifelse(is.na(CountValues.Ineligible.Source) | CountValues.Ineligible.Source == 0,
                                                                                                                            NA,
-                                                                                                                           CountValues.Harmonized / CountValues.Ineligible.Raw)))
+                                                                                                                           CountValues.Harmonized / CountValues.Ineligible.Source)))
                                                         }
                                                     })
 
@@ -1952,9 +1919,9 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                           return(TableReport %>%
                                                                       summarize(CountTrackedFeatures = n(),
                                                                                 across(starts_with("CountValues"), ~ sum(.x, na.rm = TRUE))) %>%
-                                                                      mutate(ProportionValues.Harmonized = ifelse(is.na(CountValues.Ineligible.Raw) | CountValues.Ineligible.Raw == 0,
+                                                                      mutate(ProportionValues.Harmonized = ifelse(is.na(CountValues.Ineligible.Source) | CountValues.Ineligible.Source == 0,
                                                                                                                   NA,
-                                                                                                                  CountValues.Harmonized / CountValues.Ineligible.Raw)))
+                                                                                                                  CountValues.Harmonized / CountValues.Ineligible.Source)))
                                                       }
                                                   }) %>%
                                               list_rbind(names_to = "Table")
@@ -1966,9 +1933,9 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
   Report.DataHarmonization.DataSetLevel <- Report.DataHarmonization.TableLevel %>%
                                                 summarize(CountAffectedTables = n(),
                                                           across(starts_with("Count"), ~ sum(.x, na.rm = TRUE))) %>%
-                                                mutate(ProportionValues.Harmonized = ifelse(is.na(CountValues.Ineligible.Raw) | CountValues.Ineligible.Raw == 0,
+                                                mutate(ProportionValues.Harmonized = ifelse(is.na(CountValues.Ineligible.Source) | CountValues.Ineligible.Source == 0,
                                                                                             NA,
-                                                                                            CountValues.Harmonized / CountValues.Ineligible.Raw))
+                                                                                            CountValues.Harmonized / CountValues.Ineligible.Source))
 
 # Delete artificial 'TrackID'-column from data.frames (not needed anymore)
 #-------------------------------------------------------------------------------
@@ -1982,7 +1949,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-#   MODULE E 12)  Perform data harmonization (remediation, recoding, formatting) on data.frames of non-conforming records (without tracking / reporting)
+#   STEP E 12)  Perform data harmonization (remediation, recoding, formatting) on data.frames of non-conforming records (without tracking / reporting)
 #===============================================================================
 
   Report.Log <- Report.Log %>%
@@ -1999,8 +1966,8 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                       #-----------------------------------------
                                       # Check if data remediation was performed on source table and if it should be performed on non-conforming records
                                       #-----------------------------------------
-                                      if (Settings$CurationProcess %>% filter(Table == tablename) %>% pull(DataRemediation) == TRUE &&
-                                          Settings$CurationProcess %>% filter(Table == tablename) %>% pull(DataRemediation.NonconformingRecords) == TRUE &&
+                                      if (Settings$RefinementProcess %>% filter(Table == tablename) %>% pull(DataRemediation) == TRUE &&
+                                          Settings$RefinementProcess %>% filter(Table == tablename) %>% pull(DataRemediation.NonconformingRecords) == TRUE &&
                                           length(Table) == 0 && nrow(Table) == 0)
                                       {
                                           # Get table-specific settings on data remediation process
@@ -2019,7 +1986,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                   EligibleValueSet <- MetaData$Values %>%
                                                                           filter(Table == tablename,
                                                                                  FeatureName.Refined == featurename) %>%
-                                                                          pull(Value.Raw)   # Eligible Values PRIOR to recoding
+                                                                          pull(Value.Source)   # Eligible Values PRIOR to recoding
 
                                                   # Count ineligible values in current feature
                                                   CountValues.Ineligible.Prior = sum(!is.na(Table[[featurename]]) & Table[[featurename]] %notin% EligibleValueSet)
@@ -2050,14 +2017,14 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                                                                   as.list()
 
                                                       # EXECUTE data remediation for current feature
-                                                      Table[[featurename]] <- dsFreda::RemediateData(Feature = Table[[featurename]],
-                                                                                                     FeatureName = featurename,
-                                                                                                     ContextDataFrame = Table,
-                                                                                                     Methods = Methods,
-                                                                                                     EligibleValueSet = EligibleValueSet,
-                                                                                                     TransformativeExpressions = TransformativeExpressions,
-                                                                                                     Dictionary = Dictionary,
-                                                                                                     FuzzyStringMatching = FuzzyStringMatching)
+                                                      Table[[featurename]] <- Freda::RemediateData(Feature = Table[[featurename]],
+                                                                                                   FeatureName = featurename,
+                                                                                                   ContextDataFrame = Table,
+                                                                                                   Methods = Methods,
+                                                                                                   EligibleValueSet = EligibleValueSet,
+                                                                                                   TransformativeExpressions = TransformativeExpressions,
+                                                                                                   Dictionary = Dictionary,
+                                                                                                   FuzzyStringMatching = FuzzyStringMatching)
                                                   }
                                               }
                                           }
@@ -2086,7 +2053,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                           {
                                               RecodingDictionaries <- ValueSets %>%
                                                                           split(.$FeatureName.Refined) %>%      # 'split' is a base function and needs '.$' to address 'FeatureName.Refined'
-                                                                          map(\(Values) with(Values, set_names(Value.Refined, Value.Raw)))
+                                                                          map(\(Values) with(Values, set_names(Value.Refined, Value.Source)))
 
                                               FeaturesWithValueSets <- ValueSets %>%
                                                                             pull(FeatureName.Refined) %>%
@@ -2094,8 +2061,8 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
                                               for (featurename in FeaturesWithValueSets)
                                               {
-                                                  Table[[featurename]] <- dsFreda::RecodeData(TargetVector = Table[[featurename]],
-                                                                                              Dictionary = RecodingDictionaries[[featurename]])
+                                                  Table[[featurename]] <- Freda::RecodeData(TargetVector = Table[[featurename]],
+                                                                                            Dictionary = RecodingDictionaries[[featurename]])
                                               }
                                           }
                                       }
@@ -2103,8 +2070,8 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                       #-----------------------------------------
                                       # Check if remediation finalization of non-conforming records is intended and applicable for current table
                                       #-----------------------------------------
-                                      if (Settings$CurationProcess %>% filter(Table == tablename) %>% pull(DataRemediation) == FALSE &&
-                                          Settings$CurationProcess %>% filter(Table == tablename) %>% pull(DataRemediation.NonconformingRecords) == TRUE &&
+                                      if (Settings$RefinementProcess %>% filter(Table == tablename) %>% pull(DataRemediation) == FALSE &&
+                                          Settings$RefinementProcess %>% filter(Table == tablename) %>% pull(DataRemediation.NonconformingRecords) == TRUE &&
                                           length(Table) > 0 && nrow(Table) > 0)
                                       {
                                           # Get features that are supposed to be remediated from settings
@@ -2123,10 +2090,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
                                                   if (nrow(EligibleValueSet) > 0)
                                                   {
-                                                      Table[[featurename]] <- dsFreda::FinalizeDataRemediation(TargetVector = Table[[featurename]],
-                                                                                                               EligibleValueSet = EligibleValueSet,
-                                                                                                               UnremediatedValues.Substitute = RemediationProcess %>% filter(Feature == featurename) %>% pull(UnremediatedValues.Substitute),
-                                                                                                               UnremediatedValues.Substitution = RemediationProcess %>% filter(Feature == featurename) %>% pull(UnremediatedValues.Substitution))
+                                                      Table[[featurename]] <- Freda::FinalizeDataRemediation(TargetVector = Table[[featurename]],
+                                                                                                             EligibleValueSet = EligibleValueSet,
+                                                                                                             UnremediatedValues.Substitute = RemediationProcess %>% filter(Feature == featurename) %>% pull(UnremediatedValues.Substitute),
+                                                                                                             UnremediatedValues.Substitution = RemediationProcess %>% filter(Feature == featurename) %>% pull(UnremediatedValues.Substitution))
                                                   }
                                               }
                                           }
@@ -2158,7 +2125,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                           {
                                               Table <- Table %>%
                                                             mutate(across(all_of(FeatureTypes$Feature[i]),
-                                                                          ~ dsFreda::FormatData(.x, FeatureTypes$Type[i])))
+                                                                          ~ Freda::FormatData(.x, FeatureTypes$Type[i])))
                                           }
                                       }
 
@@ -2171,10 +2138,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-# MODULE F)  Secondary Table Cleaning
+# STEP F)  Secondary Table Cleaning
 #===============================================================================
 #   - Remove ineligible records that may have been introduced during processing
-#   - Same proceedings as in primary table cleaning (MODULE C))
+#   - Same proceedings as in primary table cleaning (STEP C))
 #-------------------------------------------------------------------------------
 
   # Log report: New processing stage
@@ -2191,31 +2158,31 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                         .init = DataSet[[SeedTableName]])
 
   # Secondary cleaning of 'DataSetRoot'
-  if ((Settings$CurationProcess %>% filter(Table == ".DataSetRoot") %>% pull(SecondaryTableCleaning)) == TRUE)
+  if ((Settings$RefinementProcess %>% filter(Table == ".DataSetRoot") %>% pull(SecondaryTableCleaning)) == TRUE)
   {
-      # dsFreda::CleanTable() returns a list with the elements 'Table', 'NonconformingRecords', 'Counter' and 'Log'
-      SecondaryTableCleaning.DataSetRoot <- dsFreda::CleanTable(Table = DataSetRoot,
-                                                                TableName = ".DataSetRoot",
-                                                                PrimaryKey = RootPrimaryKey,
-                                                                RootSubjectKey = RootPrimaryKey,
-                                                                SeedSubjectKey = SeedPrimaryKey,
-                                                                PrimaryKeyIgnoredInRedundancyCheck = FALSE,      # This setting is important because it considers the semantic meaning of root primary keys (e.g. two different DiagnosisIDs of the same patient should stay truly distinct, because they can be related to different diagnostic procedures)
-                                                                EmptyStrings.Detect = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Detect),
-                                                                EmptyStrings.Substitute = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Substitute),
-                                                                EmptyStrings.Substitution = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Substitution),
-                                                                DuplicateRecords.Detect = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(DuplicateRecords.Detect),
-                                                                DuplicateRecords.Remove = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(DuplicateRecords.Remove),
-                                                                FeatureRequirements = Settings$FeatureRequirements %>% filter(Table %in% RootTableNames),
-                                                                ValueAvailabilityViolations.Detect = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(ValueAvailabilityViolations.Detect),
-                                                                ValueAvailabilityViolations.Remove = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(ValueAvailabilityViolations.Remove),
-                                                                PrintMessages = TRUE)
+      # Freda::CleanTable() returns a list with the elements 'Table', 'NonconformingRecords', 'Counter' and 'Log'
+      SecondaryTableCleaning.DataSetRoot <- Freda::CleanTable(Table = DataSetRoot,
+                                                              TableName = ".DataSetRoot",
+                                                              PrimaryKey = RootPrimaryKey,
+                                                              RootSubjectKey = RootPrimaryKey,
+                                                              SeedSubjectKey = SeedPrimaryKey,
+                                                              PrimaryKeyIgnoredInRedundancyCheck = FALSE,      # This setting is important because it considers the semantic meaning of root primary keys (e.g. two different DiagnosisIDs of the same patient should stay truly distinct, because they can be related to different diagnostic procedures)
+                                                              EmptyStrings.Detect = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Detect),
+                                                              EmptyStrings.Substitute = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Substitute),
+                                                              EmptyStrings.Substitution = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(EmptyStrings.Substitution),
+                                                              DuplicateRecords.Detect = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(DuplicateRecords.Detect),
+                                                              DuplicateRecords.Remove = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(DuplicateRecords.Remove),
+                                                              FeatureRequirements = Settings$FeatureRequirements %>% filter(Table %in% RootTableNames),
+                                                              ValueAvailabilityViolations.Detect = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(ValueAvailabilityViolations.Detect),
+                                                              ValueAvailabilityViolations.Remove = Settings$SecondaryTableCleaning %>% filter(Table == ".DataSetRoot") %>% pull(ValueAvailabilityViolations.Remove),
+                                                              PrintMessages = TRUE)
 
       # Assess new table record and root/seed subject counts
       StageCounter.DataSetRoot <- list(.DataSetRoot = DataSetRoot) %>%
-                                      dsFreda::TrackCounts(TransformationReturn = list(.DataSetRoot = PrimaryTableCleaning.DataSetRoot),
-                                                           RootSubjectKeys = list(.DataSetRoot = RootPrimaryKey),
-                                                           SeedSubjectKey = SeedPrimaryKey,
-                                                           PrintMessages = FALSE) %>%
+                                      Freda::TrackCounts(TransformationReturn = list(.DataSetRoot = PrimaryTableCleaning.DataSetRoot),
+                                                         RootSubjectKeys = list(.DataSetRoot = RootPrimaryKey),
+                                                         SeedSubjectKey = SeedPrimaryKey,
+                                                         PrintMessages = FALSE) %>%
                                       mutate(ProcessingStage = "PRE Secondary Table Cleaning",
                                              ProcessTopic = "COUNT",
                                              CountLevel = "Monitor")
@@ -2247,7 +2214,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                 imap(function(Table, tablename)
                                      {
                                         # Check in settings if secondary table cleaning should be executed for current table
-                                        if ((Settings$CurationProcess %>% filter(Table == tablename) %>% pull(SecondaryTableCleaning)) == FALSE)
+                                        if ((Settings$RefinementProcess %>% filter(Table == tablename) %>% pull(SecondaryTableCleaning)) == FALSE)
                                         {
                                             CurrentTableCleaning <- list(Table = Table,
                                                                          NonconformingRecords = NULL,
@@ -2280,24 +2247,24 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                             if (tablename %in% RootTableNames) { PrimaryKeyIgnoredInRedundancyCheck <- FALSE }
 
                                             # Perform table cleaning (this returns a list object with the elements 'Table', 'Report' and 'AffectedRootSubjects')
-                                            CurrentTableCleaning <- dsFreda::CleanTable(Table = Table,
-                                                                                        TableName = tablename,
-                                                                                        PrimaryKey = PrimaryKeys[[tablename]],
-                                                                                        RootSubjectKey = RootSubjectKeys[[tablename]],
-                                                                                        SeedSubjectKey = SeedPrimaryKey,
-                                                                                        PrimaryKeyIgnoredInRedundancyCheck = PrimaryKeyIgnoredInRedundancyCheck,
-                                                                                        DataSetRoot = DataSetRoot,
-                                                                                        UnlinkedRecords.Detect = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(UnlinkedRecords.Detect),
-                                                                                        UnlinkedRecords.Remove = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(UnlinkedRecords.Remove),
-                                                                                        EmptyStrings.Detect = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Detect),
-                                                                                        EmptyStrings.Substitute = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Substitute),
-                                                                                        EmptyStrings.Substitution = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Substitution),
-                                                                                        DuplicateRecords.Detect = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(DuplicateRecords.Detect),
-                                                                                        DuplicateRecords.Remove = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(DuplicateRecords.Remove),
-                                                                                        FeatureRequirements = Settings$FeatureRequirements %>% filter(Table == tablename),
-                                                                                        ValueAvailabilityViolations.Detect = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(ValueAvailabilityViolations.Detect),
-                                                                                        ValueAvailabilityViolations.Remove = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(ValueAvailabilityViolations.Remove),
-                                                                                        PrintMessages = TRUE)
+                                            CurrentTableCleaning <- Freda::CleanTable(Table = Table,
+                                                                                      TableName = tablename,
+                                                                                      PrimaryKey = PrimaryKeys[[tablename]],
+                                                                                      RootSubjectKey = RootSubjectKeys[[tablename]],
+                                                                                      SeedSubjectKey = SeedPrimaryKey,
+                                                                                      PrimaryKeyIgnoredInRedundancyCheck = PrimaryKeyIgnoredInRedundancyCheck,
+                                                                                      DataSetRoot = DataSetRoot,
+                                                                                      UnlinkedRecords.Detect = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(UnlinkedRecords.Detect),
+                                                                                      UnlinkedRecords.Remove = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(UnlinkedRecords.Remove),
+                                                                                      EmptyStrings.Detect = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Detect),
+                                                                                      EmptyStrings.Substitute = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Substitute),
+                                                                                      EmptyStrings.Substitution = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(EmptyStrings.Substitution),
+                                                                                      DuplicateRecords.Detect = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(DuplicateRecords.Detect),
+                                                                                      DuplicateRecords.Remove = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(DuplicateRecords.Remove),
+                                                                                      FeatureRequirements = Settings$FeatureRequirements %>% filter(Table == tablename),
+                                                                                      ValueAvailabilityViolations.Detect = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(ValueAvailabilityViolations.Detect),
+                                                                                      ValueAvailabilityViolations.Remove = Settings$SecondaryTableCleaning %>% filter(Table == tablename) %>% pull(ValueAvailabilityViolations.Remove),
+                                                                                      PrintMessages = TRUE)
 
                                             # Add processing stage to COUNTER and LOG
                                             CurrentTableCleaning$Counter <- CurrentTableCleaning$Counter %>%
@@ -2329,10 +2296,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
   # Assess new table record and root/seed subject counts
   StageCounter <- DataSet %>%
-                      dsFreda::TrackCounts(TransformationReturn = SecondaryTableCleaning,
-                                           RootSubjectKeys = RootSubjectKeys,
-                                           SeedSubjectKey = SeedPrimaryKey,
-                                           PrintMessages = TRUE) %>%
+                      Freda::TrackCounts(TransformationReturn = SecondaryTableCleaning,
+                                         RootSubjectKeys = RootSubjectKeys,
+                                         SeedSubjectKey = SeedPrimaryKey,
+                                         PrintMessages = TRUE) %>%
                       mutate(ProcessingStage = "Secondary Table Cleaning",
                              ProcessTopic = "COUNT",
                              CountLevel = "Stage")
@@ -2375,7 +2342,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-# MODULE G)  RECORD SUBSUMPTION (Find table records that can be considered redundant if they provide no additional informational value compared to a previous record)
+# STEP G)  RECORD SUBSUMPTION (Find table records that can be considered redundant if they provide no additional informational value compared to a previous record)
 #===============================================================================
 # 1)  Process data set root tables first, since other tables hold primary key
 #     Any Root subject keys that are removed due to redundancy need to be replaced in dependent tables.
@@ -2394,7 +2361,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
   Process.RecordSubsumption <- function(Table, tablename)
                                {
                                   # Check in settings if record subsumption should be executed for current table
-                                  if ((Settings$CurationProcess %>% filter(Table == tablename) %>% pull(RecordSubsumption)) == FALSE)
+                                  if ((Settings$RefinementProcess %>% filter(Table == tablename) %>% pull(RecordSubsumption)) == FALSE)
                                   {
                                       CurrentRecordSubsumption <- list(Table = Table,
                                                                        NonconformingRecords = NULL,
@@ -2425,17 +2392,17 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                   } else {
 
                                       # Perform RECORD SUBSUMPTION (this returns a list object with the elements 'Table', 'NonconformingRecords', 'Counter' and 'Log')
-                                      CurrentRecordSubsumption <- dsFreda::SubsumeRecords(Table = Table,
-                                                                                          TableName = tablename,
-                                                                                          PrimaryKey = PrimaryKeys[[tablename]],
-                                                                                          RootSubjectKey = RootSubjectKeys[[tablename]],
-                                                                                          SeedSubjectKey = SeedPrimaryKey,
-                                                                                          SubsumptionRedundancies.Detect = Settings$RecordSubsumption %>% filter(Table == tablename) %>% pull(SubsumptionRedundancies.Detect),
-                                                                                          SubsumptionRedundancies.Remove = Settings$RecordSubsumption %>% filter(Table == tablename) %>% pull(SubsumptionRedundancies.Remove),
-                                                                                          SubsumptionRedundancies.DistinctiveFeatures = MetaData$Features %>% filter(TableName.Refined == tablename, Subsumption.IsDistinctive == TRUE) %>% pull(FeatureName.Refined),
-                                                                                          SubsumptionRedundancies.NegligibleFeatures = MetaData$Features %>% filter(TableName.Refined == tablename, Subsumption.IsNegligible == TRUE) %>% pull(FeatureName.Refined),
-                                                                                          SubsumptionRedundancies.NegligibleValues = Settings$DataRemediation$Process %>% filter(Table == tablename) %>% select(Feature, UnremediatedValues.Substitution) %>% tibble::deframe() %>% as.list(),
-                                                                                          PrintMessages = TRUE)
+                                      CurrentRecordSubsumption <- Freda::SubsumeRecords(Table = Table,
+                                                                                        TableName = tablename,
+                                                                                        PrimaryKey = PrimaryKeys[[tablename]],
+                                                                                        RootSubjectKey = RootSubjectKeys[[tablename]],
+                                                                                        SeedSubjectKey = SeedPrimaryKey,
+                                                                                        SubsumptionRedundancies.Detect = Settings$RecordSubsumption %>% filter(Table == tablename) %>% pull(SubsumptionRedundancies.Detect),
+                                                                                        SubsumptionRedundancies.Remove = Settings$RecordSubsumption %>% filter(Table == tablename) %>% pull(SubsumptionRedundancies.Remove),
+                                                                                        SubsumptionRedundancies.DistinctiveFeatures = MetaData$Features %>% filter(TableName.Refined == tablename, Subsumption.IsDistinctive == TRUE) %>% pull(FeatureName.Refined),
+                                                                                        SubsumptionRedundancies.NegligibleFeatures = MetaData$Features %>% filter(TableName.Refined == tablename, Subsumption.IsNegligible == TRUE) %>% pull(FeatureName.Refined),
+                                                                                        SubsumptionRedundancies.NegligibleValues = Settings$DataRemediation$Process %>% filter(Table == tablename) %>% select(Feature, UnremediatedValues.Substitution) %>% tibble::deframe() %>% as.list(),
+                                                                                        PrintMessages = TRUE)
 
                                       # Add processing stage to COUNTER and LOG
                                       CurrentRecordSubsumption$Counter <- CurrentRecordSubsumption$Counter %>%
@@ -2539,10 +2506,10 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
   # Assess new table record and root/seed subject counts
   StageCounter <- DataSet %>%
-                      dsFreda::TrackCounts(TransformationReturn = RecordSubsumption,
-                                           RootSubjectKeys = RootSubjectKeys,
-                                           SeedSubjectKey = SeedPrimaryKey,
-                                           PrintMessages = TRUE) %>%
+                      Freda::TrackCounts(TransformationReturn = RecordSubsumption,
+                                         RootSubjectKeys = RootSubjectKeys,
+                                         SeedSubjectKey = SeedPrimaryKey,
+                                         PrintMessages = TRUE) %>%
                       mutate(ProcessingStage = "Record Subsumption",
                              ProcessTopic = "COUNT",
                              CountLevel = "Stage")
@@ -2679,7 +2646,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                CountSeedSubjects.Change.Proportion = case_when(is.na(CountSeedSubjects.Change.Proportion) & CountSeedSubjects.Prior > 0 ~ CountSeedSubjects.Change / CountSeedSubjects.Prior,
                                                                                .default = CountSeedSubjects.Change.Proportion))
 
-  # Create a summarizing history of record and subject counts from start to finish of Curation
+  # Create a summarizing history of record and subject counts from start to finish of Refinement
   Report.Counter.Summary <- Report.Counter %>%
                                 filter(CountLevel == "Stage") %>%
                                 select(ProcessingStage,
@@ -2742,7 +2709,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-# State Curation completion in PROCESS and LOG reports
+# State Refinement completion in PROCESS and LOG reports
 #===============================================================================
 
   # PROCESS report: Create/update entries
@@ -2753,11 +2720,11 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
   # LOG report: Add summarizing entries
   Report.Log <- Report.Log %>%
                     Log.Add(Log.New(ProcessingStage = "General",
-                                    Message = paste0("Data Curation performed successfully! Duration: ", Report.Process$Process.Duration, "."),
+                                    Message = paste0("Data Refinement performed successfully! Duration: ", Report.Process$Process.Duration, "."),
                                     MessageClass = "Special",
                                     PrintMessage = TRUE)) %>%
                     Log.Add(Log.New(ProcessingStage = "General",
-                                    ProcessTopic = "Curation Summary",
+                                    ProcessTopic = "Refinement Summary",
                                     ProcessTopic.Subgroup = "Counter Summary",
                                     Message = with(Report.Counter.DataSetLevel,
                                                    paste0("Processed ", length(DataSet), " data set tables. ",
@@ -2773,12 +2740,12 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
                                     MessageClass = "Info",
                                     PrintMessage = FALSE)) %>%
                     Log.Add(Log.New(ProcessingStage = "General",
-                                    ProcessTopic = "Curation Summary",
+                                    ProcessTopic = "Refinement Summary",
                                     ProcessTopic.Subgroup = "Data Harmonization Summary",
                                     Message = with(Report.DataHarmonization.DataSetLevel,
                                                    paste0("Tracked ", CountTrackedFeatures, " features in ", CountAffectedTables, " tables. ",
                                                           "Of ", CountValues, " values ", CountValues.NonMissing, " were non-missing. ",
-                                                          "Of these ", CountValues.Ineligible.Raw, " were initially ineligible. ",
+                                                          "Of these ", CountValues.Ineligible.Source, " were initially ineligible. ",
                                                           "Of these ", CountValues.Harmonized, " could be harmonized.")),
                                     MessageClass = "Info",
                                     PrintMessage = FALSE))
@@ -2794,11 +2761,11 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
 
 
 #===============================================================================
-# PRINT Curation Summary
+# PRINT Refinement Summary
 #===============================================================================
 
-  # Print Curation Summary title
-  SummaryTitle <- "Data Curation Summary"
+  # Print Refinement Summary title
+  SummaryTitle <- "Data Refinement Summary"
   cat("\n", "\033[1m",
       paste0(rep("~", times = str_length(SummaryTitle)), collapse = ""),
       "\n", SummaryTitle, "\n",
@@ -2870,18 +2837,18 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
        cli_bullets(c("*" = style_bold(paste0("Tracked data harmonization of ", CountTrackedFeatures, " features in ", CountAffectedTables, " tables.")),
                      "*" = style_bold(paste0("Total values: ", format(CountValues, big.mark = ","))),
                      "*" = style_bold(paste0("Non-missing values: ", col_blue(format(CountValues.NonMissing, big.mark = ",")))),
-                     "*" = style_bold(paste0("Ineligible values: ", col_red(format(CountValues.Ineligible.Raw, big.mark = ",")))),
+                     "*" = style_bold(paste0("Ineligible values: ", col_red(format(CountValues.Ineligible.Source, big.mark = ",")))),
                      "*" = style_bold(paste0("Harmonized values: ", col_green(paste0(format(CountValues.Harmonized, big.mark = ","), " (", round(ProportionValues.Harmonized * 100, 1), "%)")))))))
 
   # Define print format of a DATA HARMONIZATION summary bullet point
-  FormatDataHarmonizationSummary <- function(CountTrackedFeatures, CountValues.Ineligible.Raw, CountValues.Harmonized, ProportionValues.Harmonized)
+  FormatDataHarmonizationSummary <- function(CountTrackedFeatures, CountValues.Ineligible.Source, CountValues.Harmonized, ProportionValues.Harmonized)
   {
       ProportionValue <- case_when(ProportionValues.Harmonized > 0 & ProportionValues.Harmonized < 0.01 ~ "< 1%",
                                    ProportionValues.Harmonized > 0.99 & ProportionValues.Harmonized < 1 ~ "> 99%",
                                    .default = paste0(round(ProportionValues.Harmonized * 100), "%"))
 
       paste0(format(CountTrackedFeatures, big.mark = ","), " tracked features had ",
-             format(CountValues.Ineligible.Raw, big.mark = ","), " ineligible values, of which ",
+             format(CountValues.Ineligible.Source, big.mark = ","), " ineligible values, of which ",
              format(CountValues.Harmonized, big.mark = ","), " (", ProportionValue, ") were harmonized.")
   }
 
@@ -2889,9 +2856,9 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
   cat(paste0(style_bold(style_underline("Table-specific Data Harmonization summaries")), "\n"))
 
   Report.DataHarmonization.TableLevel %>%
-      mutate(Print = paste0("'", Table, "': ", case_when(CountValues.Ineligible.Raw == 0 ~ paste0(format(CountTrackedFeatures, big.mark = ","), " tracked features had no ineligible values."),
+      mutate(Print = paste0("'", Table, "': ", case_when(CountValues.Ineligible.Source == 0 ~ paste0(format(CountTrackedFeatures, big.mark = ","), " tracked features had no ineligible values."),
                                                          .default = FormatDataHarmonizationSummary(CountTrackedFeatures,
-                                                                                                   CountValues.Ineligible.Raw,
+                                                                                                   CountValues.Ineligible.Source,
                                                                                                    CountValues.Harmonized,
                                                                                                    ProportionValues.Harmonized)))) %>%
       pull(Print) %>%
@@ -2926,7 +2893,7 @@ RefineData <- function(SourceDataSetName = "SourceDataSet",
   # warning = function(w)
   #           {
   #               CompletionCheck <- "yellow"
-  #               Report.Process$FinalMessage <- paste0("Completed Curation with following warning: \n", w)
+  #               Report.Process$FinalMessage <- paste0("Completed Refinement with following warning: \n", w)
   #           },
   #
   # # In case of occurring error:
