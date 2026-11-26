@@ -39,8 +39,12 @@ CheckMetaData <- function(MetaData)
   CheckSuccessful <- FALSE
 
 
-  # Assumptions:
-  #   - Names of Primary and Foreign Key features should be equal
+  # Assert that:
+  #   - All tables must have exactly one primary key feature (does not have to be populated in underlying data)
+  #   - All tables must contain seed primary key
+  #   - Seed Primary Key must be singular (ONE feature)
+  #   - There is at least one table containing seed and root feature(s)
+  #   - Names of Primary and Foreign Key features should be equal across different tables
 
 
   SeedTableName <- MetaData$Tables %>%

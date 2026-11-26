@@ -207,11 +207,11 @@ RemediateData <- function(Feature,
                   pivot_longer(everything(), names_to = "Method", values_to = "Order") %>%
                   filter(!is.na(Order)) %>%      # Remediation methods that are set to 'NA' are filtered out
                   arrange(Order) %>%
-                  mutate(Function = case_match(Method,
-                                               "Method.TransformativeExpressions" ~ "RunTransformativeExpressions",
-                                               "Method.StringExtraction" ~ "RunStringExtraction",
-                                               "Method.FuzzyStringMatching" ~ "RunFuzzyStringMatching",
-                                               "Method.Dictionary" ~ "RunDictionary"))
+                  mutate(Function = recode_values(Method,
+                                                  "Method.TransformativeExpressions" ~ "RunTransformativeExpressions",
+                                                  "Method.StringExtraction" ~ "RunStringExtraction",
+                                                  "Method.FuzzyStringMatching" ~ "RunFuzzyStringMatching",
+                                                  "Method.Dictionary" ~ "RunDictionary"))
 
   # Apply selection of remediation methods on 'Feature' as defined in 'Process'
   if (length(Process) > 0 && nrow(Process) > 0)

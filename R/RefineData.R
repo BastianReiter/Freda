@@ -77,10 +77,10 @@ RefineData <- function(SourceDataSet,
 #   SETUP
 #
 #   STEP A)  STRUCTURAL HARMONIZATION
-#     1)  Transform table names
-#     2)  Add empty tables in data set if they are missing in source data
-#     3)  Rename features
-#     4)  In tables with missing features, add empty features accordingly
+#     1)  Add empty tables in data set if they are missing in source data
+#     2)  Rename features
+#     3)  Create DataSetRoot
+#     4)  Handle missing features
 #
 #   STEP B)  DATA SET CHECKS
 #
@@ -123,8 +123,8 @@ RefineData <- function(SourceDataSet,
 
 
   # --- For Testing Purposes ---
-  # SourceDataSet <- CCP.SourceDataSet
-  # FREDAModule <- FREDAModule.CCP
+  # SourceDataSet <- DFCI.SourceDataSet
+  # FREDAModule <- DFCI.FREDAModule
   # Profile.RefinementProcess <- "Default"
   # Profile.DataRemediation <- "Default"
   # Profile.Dictionary <- "Default"
@@ -291,10 +291,14 @@ RefineData <- function(SourceDataSet,
 #===============================================================================
 # STEP A)  Structural Harmonization
 #===============================================================================
-#   - Add empty tables in data set if they are missing in source data
-#   - Recode feature names according to meta data
-#   - Add empty features in case of missing feature names
-#   - Remove unknown features
+#   1)  Add empty tables in data set if they are missing in source data
+#   2)  Recode feature names according to meta data
+#   3)  Create auxiliary data.frame 'DataSetRoot' by linking all tables with Role 'Seed' and 'Root'
+#   4)  Handle missing and unknown features
+#         - If primary key is missing, add running number
+#         - If 'Seed' key is missing, add it via join with DataSetRoot
+#         - If other feature is missing, add it as empty vector
+#         - Remove unknown features
 #-------------------------------------------------------------------------------
 
   # Log report: New processing stage
@@ -305,8 +309,10 @@ RefineData <- function(SourceDataSet,
                                     MessagePriority = 3,
                                     PrintMessage = TRUE))
 
-
-# If tables are missing, create corresponding empty tables for easier management throughout following processing
+#===============================================================================
+#   STEP A1)  Handle missing tables
+#===============================================================================
+#     - If tables are missing, create corresponding empty tables for easier management throughout following processing
 #-------------------------------------------------------------------------------
 
   MissingTableNames <- TableNames[!(TableNames %in% names(DataSet))]
@@ -331,7 +337,11 @@ RefineData <- function(SourceDataSet,
   DataSet <- DataSet[TableNames]
 
 
-# Rename features from harmonized source feature names to refined feature names
+#===============================================================================
+#   STEP A2)  Recode feature names
+#===============================================================================
+#     - Rename features from harmonized source feature names to refined feature names
+#     - For empty tables create features according to meta data (empty vectors)
 #-------------------------------------------------------------------------------
 
   # Looping through tables to rename features
@@ -360,60 +370,155 @@ RefineData <- function(SourceDataSet,
                        })
 
 
-# Create list 'NonconformingRecords' containing empty data.frames with the same structure as the DataSet tables
+#===============================================================================
+#   STEP A3) Create 'DataSetRoot'
+#===============================================================================
+#     - Create auxiliary data.frame containing all eligible 'Root subjects' by merging 'Seed' table with all 'Root' tables (in case 'Root' does not only consist of 'Seed')
 #-------------------------------------------------------------------------------
+
+  # The reduce()-call performs pair-wise left-joining of 'Seed' table with all 'Root' tables
+  DataSetRoot <- reduce(.x = DataSet[RootTableNames[RootTableNames != SeedTableName]],      # All 'Root' tables that are not 'Seed'
+                        .f = \(TableA, TableB) left_join(TableA, TableB, by = SeedPrimaryKey),
+                        .init = DataSet[[SeedTableName]])
+
+
+#===============================================================================
+#   STEP A4)  Handle missing and unknown features
+#===============================================================================
+#     - If primary key for a table is missing, add running number
+#     - If 'Seed' key is missing, add it via join with DataSetRoot
+#     - If other feature is missing, add it as empty vector
+#     - Remove unknown existing features
+#-------------------------------------------------------------------------------
+
+  FeatureExistenceHandling <- DataSet %>%
+                                  imap(function(Table, tablename)
+                                       {
+                                          # Determine missing and unknown features
+                                          RequiredFeatureNames <- filter(MetaData$Features, TableName.Refined == tablename)$FeatureName.Refined
+                                          PresentFeatureNames <- names(Table)
+                                          MissingFeatures <- RequiredFeatureNames[!(RequiredFeatureNames %in% PresentFeatureNames)]
+                                          UnknownFeatures <- names(Table)[!(names(Table) %in% RequiredFeatureNames)]
+
+                                          if (length(MissingFeatures) == 0 & length(UnknownFeatures) == 0)
+                                          {
+                                              CurrentFeatureExistenceHandling <- list(Table = Table,
+                                                                                      Log = Log.New(Table = tablename,
+                                                                                                    ProcessTopic = "Missing and unknown features",
+                                                                                                    Message = "No missing or unknown features.",
+                                                                                                    MessageClass = "Success",
+                                                                                                    PrintMessage = TRUE))
+                                          } else {
+
+                                              # Initiate current log object
+                                              Log <- tibble()
+
+                                              # Get Table primary key and root subject key
+                                              TablePrimaryKey <- PrimaryKeys[[tablename]]
+                                              TableRootSubjectKey <- RootSubjectKeys[[tablename]]
+                                              TableRootSubjectKey.WithoutSeed <- TableRootSubjectKey[!(TableRootSubjectKey %in% SeedPrimaryKey)]
+
+                                              # If primary key feature is missing, create it and populate it with a running number
+                                              if (TablePrimaryKey %in% MissingFeatures)
+                                              {
+                                                  Table <- Table %>%
+                                                                mutate(!!TablePrimaryKey := as.character(1:n()),
+                                                                       .before = 1)
+
+                                                  # Inform log report about missing primary key
+                                                  Log <- Log %>%
+                                                            Log.Add(Log.New(Table = tablename,
+                                                                            ProcessTopic = "Missing features",
+                                                                            Message = paste0("Primary key '", TablePrimaryKey, "' was missing, added running number."),
+                                                                            MessageClass = "Info",
+                                                                            PrintMessage = TRUE))
+
+                                                  # Remove primary key feature from MissingFeatures vector
+                                                  MissingFeatures <- MissingFeatures[MissingFeatures != TablePrimaryKey]
+                                              }
+
+                                              # If 'Seed' primary key feature is missing in the Table
+                                              if (SeedPrimaryKey %in% MissingFeatures)
+                                              {
+                                                  # Derive lookup table from 'DataSetRoot' that enables mapping of the current Table's root key to 'Seed' primary key
+                                                  SeedPrimaryKeyLookup <- DataSetRoot %>%
+                                                                              select(all_of(TableRootSubjectKey)) %>%
+                                                                              distinct()
+
+                                                  # Perform mapping
+                                                  Table <- Table %>%
+                                                                left_join(SeedPrimaryKeyLookup, by = join_by(!!!syms(TableRootSubjectKey.WithoutSeed)))
+
+                                                  # Inform log report about missing 'Seed' primary key
+                                                  Log <- Log %>%
+                                                            Log.Add(Log.New(Table = tablename,
+                                                                            ProcessTopic = "Missing features",
+                                                                            Message = paste0("Seed key '", SeedPrimaryKey, "' was missing and was obtained from 'DataSetRoot'."),
+                                                                            MessageClass = "Info",
+                                                                            PrintMessage = TRUE))
+
+                                                  # Remove 'Seed' primary key feature from MissingFeatures vector
+                                                  MissingFeatures <- MissingFeatures[MissingFeatures != SeedPrimaryKey]
+                                              }
+
+                                              # If Table misses more features, add empty columns accordingly
+                                              if (length(MissingFeatures) > 0)
+                                              {
+                                                  Table <- Table %>%
+                                                                mutate(!!!set_names(rep(list(NA_character_), length(MissingFeatures)), MissingFeatures))
+
+                                                  # Inform log report about missing features
+                                                  Log <- Log %>%
+                                                            Log.Add(Log.New(Table = tablename,
+                                                                            ProcessTopic = "Missing features",
+                                                                            Message = paste0("Added empty vector for missing features ", paste0("'", MissingFeatures, "'", collapse = ", "), "."),
+                                                                            MessageClass = "Info",
+                                                                            PrintMessage = TRUE))
+                                              }
+
+                                              # The following effectively removes all unknown features
+                                              Table <- Table %>%
+                                                            select(all_of(RequiredFeatureNames))
+
+                                              # Print and save messages for removed features
+                                              if (length(UnknownFeatures) > 0)
+                                              {
+                                                  # Inform log report about unknown features
+                                                  Log <- Log %>%
+                                                            Log.Add(Log.New(Table = tablename,
+                                                                            ProcessTopic = "Unknown features",
+                                                                            Message = paste0("Removed unknown features ", paste0("'", UnknownFeatures, "'", collapse = ", "), "!"),
+                                                                            MessageClass = "Warning",
+                                                                            PrintMessage = TRUE))
+                                              }
+
+                                              # Bundle Table and Log for output
+                                              CurrentFeatureExistenceHandling <- list(Table = Table,
+                                                                                      Log = Log)
+                                          }
+
+                                          return(CurrentFeatureExistenceHandling)
+                                       })
+
+  # Update LOG report
+  Report.Log <- Report.Log %>%
+                    bind_rows(FeatureExistenceHandling %>%
+                                map(\(CurrentFeatureExistenceHandling) CurrentFeatureExistenceHandling$Log) %>%
+                                list_rbind())
+
+  # Reassign DataSet
+  DataSet <- FeatureExistenceHandling %>%
+                  map(\(CurrentFeatureExistenceHandling) CurrentFeatureExistenceHandling$Table)
+
+
+#===============================================================================
+# Create list 'NonconformingRecords' containing empty data.frames with the same structure as the DataSet tables
+#===============================================================================
 
   NonconformingRecords <- DataSet %>%
-                              imap(function(Table, tablename)
-                                   {
-                                      Table %>% slice(0)
-                                   }) %>%
+                              imap(function(Table, tablename) { Table %>% slice(0) }) %>%
                               c(list(.DataSetRoot = tibble()))
 
-
-# Add empty features in case of missing feature names and remove unknown existing features
-#-------------------------------------------------------------------------------
-
-  DataSet <- DataSet %>%
-                  imap(function(Table, tablename)
-                       {
-                          # Determine missing and unknown features
-                          RequiredFeatureNames <- filter(MetaData$Features, TableName.Refined == tablename)$FeatureName.Refined
-                          PresentFeatureNames <- names(Table)
-                          MissingFeatures <- RequiredFeatureNames[!(RequiredFeatureNames %in% PresentFeatureNames)]
-                          UnknownFeatures <- names(Table)[!(names(Table) %in% RequiredFeatureNames)]
-
-                          # If a table misses features, add empty columns accordingly
-                          if (length(MissingFeatures) > 0)
-                          {
-                              Table <- Table %>%
-                                            mutate(!!!set_names(rep(list(NA_character_), length(MissingFeatures)), MissingFeatures))
-
-                              # Inform log report about missing features
-                              Report.Log <- Report.Log %>%
-                                                Log.Add(Log.New(Table = tablename,
-                                                                ProcessTopic = "Missing features",
-                                                                Message = paste0("Added empty vector for missing features ", paste0("'", MissingFeatures, "'", collapse = ", "), ".")))
-                          }
-
-                          # The following effectively removes all unknown features
-                          Table <- Table %>%
-                                        select(all_of(RequiredFeatureNames))
-
-                          # Print and save messages for removed features
-                          if (length(UnknownFeatures) > 0)
-                          {
-                              # Inform log report about unknown features
-                              Report.Log <- Report.Log %>%
-                                                Log.Add(Log.New(Table = tablename,
-                                                                ProcessTopic = "Unknown features",
-                                                                Message = paste0("Removed unknown features ", paste0("'", UnknownFeatures, "'", collapse = ", "), "!"),
-                                                                MessageClass = "Warning",
-                                                                PrintMessage = TRUE))
-                          }
-
-                          return(Table)
-                       })
 
 
 #===============================================================================
@@ -500,7 +605,7 @@ RefineData <- function(SourceDataSet,
 #===============================================================================
 # STEP C)  Primary Table Cleaning
 #===============================================================================
-#   1) Creating auxiliary data.frame 'DataSetRoot' by linking all tables with Role 'Seed' and 'Root'
+#   1) Clean auxiliary data.frame 'DataSetRoot'
 #   2) Table cleaning with detection/removal of:
 #       - Records that are not linked to any data set root subject
 #       - Duplicate records
@@ -517,17 +622,11 @@ RefineData <- function(SourceDataSet,
                                     PrintMessage = TRUE))
 
 #===============================================================================
-#   STEP C1)  Create and clean 'DataSetRoot'
+#   STEP C1)  Clean 'DataSetRoot'
 #===============================================================================
-#     - Create auxiliary data.frame containing all eligible 'Root subjects' by merging 'Seed' table with all 'Root' tables (in case 'Root' does not only consist of 'Seed')
 #     - Filter out any record that has missing values in features marked as required in meta data (thereby also removing 'rogue'/unlinked patient or diagnosis records because this way every patient needs to have at least one related diagnosis and vice versa)
 #     - Note: Setting 'PrimaryKeyIgnoredInRedundancyCheck' on FALSE is crucial (e.g. because different DiagnosisIDs of same patient and diagnosis can e.g. be related to different Histologies).
 #-------------------------------------------------------------------------------
-
-  # The reduce()-call performs pair-wise left-joining of 'Seed' table with all 'Root' tables
-  DataSetRoot <- reduce(.x = DataSet[RootTableNames[RootTableNames != SeedTableName]],      # All 'Root' tables that are not 'Seed'
-                        .f = \(TableA, TableB) left_join(TableA, TableB, by = SeedPrimaryKey),
-                        .init = DataSet[[SeedTableName]])
 
   # Add initial DataSetRoot COUNTER to Counter report
   Report.Counter <- Report.Counter %>%
@@ -825,7 +924,7 @@ RefineData <- function(SourceDataSet,
 
                                     return(CurrentTableNormalization)
                                  })
-                                 # .progress = list(name = "Table normalization",
+                                 # .progress = list(name = "Table Normalization",
                                  #                  type = "iterator"))
 
   # Update COUNTER report
@@ -1836,10 +1935,10 @@ RefineData <- function(SourceDataSet,
                                                                               full_join(SummaryRecoded, by = join_by(Feature, Eligibility)) %>%
                                                                               full_join(SummaryFinal, by = join_by(Feature, Eligibility)) %>%
                                                                               arrange(Feature, desc(Eligibility)) %>%
-                                                                              mutate(Eligibility = case_match(Eligibility,
-                                                                                                              TRUE ~ "Eligible",
-                                                                                                              FALSE ~ "Ineligible",
-                                                                                                              NA ~ "Missing"))
+                                                                              mutate(Eligibility = recode_values(Eligibility,
+                                                                                                                 TRUE ~ "Eligible",
+                                                                                                                 FALSE ~ "Ineligible",
+                                                                                                                 NA ~ "Missing"))
 
                                                               # Get tibble of all combinations of occurring features and eligibility category
                                                               AllCombinations <- tibble(Feature = rep(unique(Overview$Feature), each = 3),

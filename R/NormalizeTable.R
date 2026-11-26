@@ -67,7 +67,7 @@ NormalizeTable <- function(Table,
   # Initiate log
   Log <- Log.New(Table = TableName,
                  ProcessExecution = "Initiated",
-                 Message = "Table normalization initiated.",
+                 Message = "Table Normalization initiated.",
                  MessageClass = "Info",
                  PrintMessage = PrintMessages)
 
@@ -106,7 +106,6 @@ NormalizeTable <- function(Table,
               #-----------------------------------------------------------------
               if (str_starts(Expression, "mutate"))
               {
-
                   # Substitute '.Table' and '.Feature' in Expression according to needs of further proceedings
                   Expression <- str_replace_all(Expression, ".Table", "Table")
                   if (!is.na(TargetFeatureName)) { Expression <- str_replace_all(Expression, ".Feature", TargetFeatureName) }
@@ -132,7 +131,7 @@ NormalizeTable <- function(Table,
                   # Create COUNTER entry for current normalization rule
                   Counter.CurrentRule <- Detector %>%
                                               summarize(Table = TableName,
-                                                        ProcessTopic = "Table normalization",
+                                                        ProcessTopic = "Table Normalization",
                                                         ProcessTopic.Subgroup = paste0("Normalization Rule: ", Expression),
                                                         ProcessExecution = "Executed",
                                                         CountLevel = "Subgroup",
@@ -140,7 +139,7 @@ NormalizeTable <- function(Table,
                                                         CountRecords.Change = 0,      # mutate() never leads to changes in records count
                                                         CountRootSubjects.Affected = n_distinct(pick(all_of(RootSubjectKey))),
                                                         CountSeedSubjects.Affected = n_distinct(pick(all_of(SeedSubjectKey))),
-                                                        Message = paste0("Table normalization rule '", Expression, "' affected ", CountRootSubjects.Affected, " <Root subjects> / ", CountSeedSubjects.Affected, " <Seed subjects>. No records were removed or added."),
+                                                        Message = paste0("Table Normalization rule '", Expression, "' affected ", CountRootSubjects.Affected, " <Root subjects> / ", CountSeedSubjects.Affected, " <Seed subjects>. No records were removed or added."),
                                                         MessageClass = "Success") %>%
                                               Counter.Make()
 
@@ -196,7 +195,7 @@ NormalizeTable <- function(Table,
                                                                                     str_count(.data[[TargetFeatureName]], DelimPattern))) %>%      # How many separations are occurring in the values of the target feature based on the given pattern in 'DelimPattern'?
                                             filter(.CountValueSeparations > 0) %>%
                                             summarize(Table = TableName,
-                                                      ProcessTopic = "Table normalization",
+                                                      ProcessTopic = "Table Normalization",
                                                       ProcessTopic.Subgroup = paste0("Normalization Rule: ", Expression),
                                                       ProcessExecution = "Executed",
                                                       CountLevel = "Subgroup",
@@ -204,7 +203,7 @@ NormalizeTable <- function(Table,
                                                       CountRecords.Added = sum(.CountValueSeparations),
                                                       CountRootSubjects.Affected = n_distinct(pick(all_of(RootSubjectKey))),
                                                       CountSeedSubjects.Affected = n_distinct(pick(all_of(SeedSubjectKey))),
-                                                      Message = paste0("Table normalization rule '", Expression.Print, "' affected ", CountRecords.Detected, " table records of ", CountRootSubjects.Affected, " <Root subjects> / ", CountSeedSubjects.Affected, " <Seed subjects> and led to the addition of ", CountRecords.Added, " records."),
+                                                      Message = paste0("Table Normalization rule '", Expression.Print, "' affected ", CountRecords.Detected, " table records of ", CountRootSubjects.Affected, " <Root subjects> / ", CountSeedSubjects.Affected, " <Seed subjects> and led to the addition of ", CountRecords.Added, " records."),
                                                       MessageClass = "Success") %>%
                                             Counter.Make()
 
@@ -216,7 +215,7 @@ NormalizeTable <- function(Table,
                                        .SubID = sequence(rle(.AuxID)$lengths),      # This numbers the records that originally came from one 'parent record'
                                        .IsArtificial = if_else(.SubID > 1, TRUE, FALSE),      # For tracking purposes: Mark all records that were 'artificially added' when executing separate_longer_delim()
                                        !!PrimaryKey := if_else(.SubID == 1,      # The feature holding the primary key gets re-assigned: Original records keep the original primary key values, new ones get a new primary key value
-                                                               .data[[PrimaryKey]],
+                                                               as.character(.data[[PrimaryKey]]),      # 'as.character' is necessary in case the primary key in source data was read in as e.g. integer
                                                                paste0(.data[[PrimaryKey]], "-", .SubID))) %>%
                                 select(-.AuxID,
                                        -.SubID)
@@ -271,14 +270,14 @@ NormalizeTable <- function(Table,
                   # Create COUNTER entry for current normalization rule
                   Counter.CurrentRule <- Detector.RootSubjectAffection %>%
                                               summarize(Table = TableName,
-                                                        ProcessTopic = "Table normalization",
+                                                        ProcessTopic = "Table Normalization",
                                                         ProcessTopic.Subgroup = paste0("Normalization Rule: ", Expression),
                                                         ProcessExecution = "Executed",
                                                         CountLevel = "Subgroup",
                                                         CountRecords.Change = sum(CountSubjectRecords.Post) - sum(CountSubjectRecords.Pre),
                                                         CountRootSubjects.Affected = n_distinct(pick(all_of(RootSubjectKey))),
                                                         CountSeedSubjects.Affected = n_distinct(pick(all_of(SeedSubjectKey))),
-                                                        Message = paste0("Table normalization rule '", Expression, "' affected ", CountRootSubjects.Affected, " <Root subjects> / ", CountSeedSubjects.Affected, " <Seed subjects> and reduced the table by ", abs(CountRecords.Change), " records."),
+                                                        Message = paste0("Table Normalization rule '", Expression, "' affected ", CountRootSubjects.Affected, " <Root subjects> / ", CountSeedSubjects.Affected, " <Seed subjects> and reduced the table by ", abs(CountRecords.Change), " records."),
                                                         MessageClass = "Success") %>%
                                               Counter.Make()
 
@@ -306,7 +305,7 @@ NormalizeTable <- function(Table,
 
   # Complement log
   Log <- Log %>%
-            mutate(ProcessTopic = "Table normalization")
+            mutate(ProcessTopic = "Table Normalization")
 
 #-------------------------------------------------------------------------------
   return(list(Table = Table,
