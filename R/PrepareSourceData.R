@@ -118,13 +118,13 @@ PrepareSourceData <- function(SourceDataSet,
                                     Table <- Table %>%
                                                 eval(expr = parse(text = paste0("mutate(., '",
                                                                                 AddIDFeature.IDFeatureName,
-                                                                                "' = 1:n(), .before = 1)")))
+                                                                                "' = as.character(1:n()), .before = 1)")))
                                 }
                             }
 
 
                             #---------------------------------------------------
-                            # B) Try to harmonize Source feature names using fuzzy string matching and dictionary data
+                            # B) Try to harmonize source feature names using fuzzy string matching and dictionary data
                             #---------------------------------------------------
 
                             # Get expected feature names from FREDAModule-specific meta data

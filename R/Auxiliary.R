@@ -6,38 +6,28 @@
 
 
 #===============================================================================
-#' AssertIfNotNull
+#' AddCumulativeRow
 #'
-#' Wrapper around \code{assertthat::assert_that()} for arguments that are set to NULL by default (e.g. optional arguments)
+#' Adds a cumulative row to a tibble/data.frame
 #'
-#' @param Argument The function argument that should be checked if it is not NULL
-#' @param CheckFunction \code{function} or \code{list} - A function or a list of functions suited to check a condition demanded of the argument (like \code{is.character})
-#' @return NULL
+#' @param DataFrame \code{data.frame}
+#' @param StringInNonNumericColumns \code{string} - Default: "All"
 #' @keywords internal
-#' @noRd
-#-------------------------------------------------------------------------------
-AssertIfNotNull <- function(Argument,
-                            CheckFunction)
-#-------------------------------------------------------------------------------
+#' @export
+AddCumulativeRow <- function(DataFrame,
+                             StringInNonNumericColumns = "All")
 {
-  require(assertthat)
+  # Get names of all non-numeric columns
+  NonNumericColumns <- names(DataFrame %>% select(!where(is.numeric)))
 
-  if (!is.null(Argument))
-  {
-      if (!is.list(CheckFunction)) { CheckFunction <- list(CheckFunction) }   # In case 'CheckFunction' contains only a single function, convert it into a list for syntax reasons
+  # Make cumulative row
+  CumulativeRow <- DataFrame %>%
+                        summarize(across(where(is.numeric), ~ sum(.x, na.rm = TRUE))) %>%      # Sum all non-numeric columns
+                        bind_cols(setNames(rep(list(StringInNonNumericColumns), length(NonNumericColumns)), NonNumericColumns))      # Re-add non-numeric columns and assign 'StringInNonNumericColumns' as values
 
-      # Go through each element in list 'CheckFunction', construct/parse an assert_that-call and evaluate it
-      for (i in 1:length(CheckFunction))
-      {
-          eval(parse(text = paste0("assertthat::assert_that(",
-                                   deparse(substitute(CheckFunction[[i]])),
-                                   "(",
-                                   deparse(substitute(Argument)), "))")),
-               envir = parent.frame())
-      }
-  }
-
-  return(NULL)
+  # Row-bind original data.frame and cumulative row
+  DataFrame %>%
+      bind_rows(CumulativeRow)
 }
 #===============================================================================
 

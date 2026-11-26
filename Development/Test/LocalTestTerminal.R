@@ -5,7 +5,7 @@ library(purrr)
 
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-# Load CCP test data as source data set
+# Load CCP test data as Source Data Set
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 CCP.SourceDataSet <- readRDS("../Data/CCP/CCPTestData2026.rds")
@@ -39,11 +39,13 @@ SDSTableCheck <- GetDataSetCheck(DataSet = CCP.SourceDataSet,
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Refine data
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-RefinementOutput <- RefineData(SourceDataSet = SourceDataSet,
+RefinementOutput <- RefineData(SourceDataSet = CCP.SourceDataSet,
                                FREDAModule = CCP.FREDAModule)
 
 CCP.RefinedDataSet <- RefinementOutput$DataSet
 
+
+CCP.RefinementReport <- ProcessRefinementReports(RefinementOutput$Report)
 
 FredaGUI::Widget.RefinementReport(RefinementReport = RefinementOutput$Report)
 
