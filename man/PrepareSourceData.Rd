@@ -40,7 +40,7 @@ PrepareSourceData(
 
 \item{Conversion.IntoCharacter}{\code{string} - Controls conversion of certain features in data set tables into character type. One of 'None' / 'All' / 'Date'. - Default: 'None'}
 
-\item{Conversion.DateIntoPOSIXct}{\code{string} - An encoded string representing a list with character vectors containing date formats used in argument 'tryFormats' in function \code{base::as.POSIXct}. List element should be either '.All' for all date features or specific date feature names. - Default: \code{NULL}}
+\item{Conversion.DateIntoPOSIXct}{\code{list} - A list with character vectors containing date formats used in argument 'tryFormats' in function \code{base::as.POSIXct}. List element should be either '.All' for all date features or specific date feature names. - Default: \code{NULL}}
 
 \item{RecodeFeatureNames}{\code{logical} - Indicating whether (after primary harmonization) feature names should be recoded from 'source' to 'refined' feature names according to FREDAModule-specific meta data}
 }
