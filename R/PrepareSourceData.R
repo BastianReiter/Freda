@@ -16,7 +16,7 @@
 #' @param AddIDFeature.IDFeatureName \code{string} - The name of the new ID feature
 #' @param AddIDFeature.OverwriteExistingIDFeature \code{logical} - Whether to overwrite an existing feature with the same name
 #' @param Conversion.IntoCharacter \code{string} - Controls conversion of certain features in data set tables into character type. One of 'None' / 'All' / 'Date'. - Default: 'None'
-#' @param Conversion.DateIntoPOSIXct \code{string} - An encoded string representing a list with character vectors containing date formats used in argument 'tryFormats' in function \code{base::as.POSIXct}. List element should be either '.All' for all date features or specific date feature names. - Default: \code{NULL}
+#' @param Conversion.DateIntoPOSIXct \code{list} - A list with character vectors containing date formats used in argument 'tryFormats' in function \code{base::as.POSIXct}. List element should be either '.All' for all date features or specific date feature names. - Default: \code{NULL}
 #' @param RecodeFeatureNames \code{logical} - Indicating whether (after primary harmonization) feature names should be recoded from 'source' to 'refined' feature names according to FREDAModule-specific meta data
 #'
 #' @return A \code{list} containing
@@ -53,7 +53,7 @@ PrepareSourceData <- function(SourceDataSet,
   # AddIDFeature.IDFeatureName <- "ID"
   # AddIDFeature.OverwriteExistingIDFeature <- FALSE
   # Conversion.IntoCharacter <- "None"
-  # Conversion.DateIntoPOSIXct <- .encode_tidy_eval("list('.All' = c('%Y%m%d%H%M', '%Y%m%d', '%Y-%m-%d'))", .get_encode_dictionary())
+  # Conversion.DateIntoPOSIXct <- list('.All' = c('%Y%m%d%H%M', '%Y%m%d', '%Y-%m-%d'))
   # RecodeFeatureNames <- TRUE
 
   # --- Argument Validation ---
@@ -70,7 +70,7 @@ PrepareSourceData <- function(SourceDataSet,
   if (!is.null(AddIDFeature.IDFeatureName)) { assert_that(is.string(AddIDFeature.IDFeatureName)) }
   if (!is.null(AddIDFeature.OverwriteExistingIDFeature)) { assert_that(is.flag(AddIDFeature.OverwriteExistingIDFeature)) }
   if (!(Conversion.IntoCharacter %in% c("None", "All", "Date"))) { stop("ERROR: Value of argument 'Conversion.IntoCharacter' must be one of 'None' / 'All' / 'Date'.") }
-  if (!is.null(Conversion.DateIntoPOSIXct)) { assert_that(is.string(Conversion.DateIntoPOSIXct)) }
+  if (!is.null(Conversion.DateIntoPOSIXct)) { assert_that(is.list(Conversion.DateIntoPOSIXct)) }
 
 #===============================================================================
 # - OVERVIEW -
@@ -82,20 +82,11 @@ PrepareSourceData <- function(SourceDataSet,
 #   E)  Optionally convert date features to POSIXct type
 #-------------------------------------------------------------------------------
 
-  # Save a 'backup' of the input data set (this will be part of output so changes to feature names can be tracked)
-  OriginalSourceDataSet <- SourceDataSet
-
-  # Decode string 'Conversion.DateIntoPOSIXct' and recreate list object from the result
-  if (length(Conversion.DateIntoPOSIXct) > 0)
-  {
-      Conversion.DateIntoPOSIXct <- eval(parse(text = .decode_tidy_eval(Conversion.DateIntoPOSIXct, .get_encode_dictionary())))
-      assert_that(is.list(Conversion.DateIntoPOSIXct))
-  }
-
-#-------------------------------------------------------------------------------
-
   # Initiate output messaging object
   Messages <- list(SourceFeatureNames = character())
+
+  # Save a 'backup' of the input data set (this will be part of output so changes to feature names can be tracked)
+  OriginalSourceDataSet <- SourceDataSet
 
 
 # Performing preparatory operations
@@ -124,7 +115,7 @@ PrepareSourceData <- function(SourceDataSet,
 
 
                             #---------------------------------------------------
-                            # B) Try to harmonize source feature names using fuzzy string matching and dictionary data
+                            # B) Try to harmonize SOURCE feature names using fuzzy string matching and dictionary data
                             #---------------------------------------------------
 
                             # Get expected feature names from FREDAModule-specific meta data
