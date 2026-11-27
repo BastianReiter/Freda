@@ -6,7 +6,7 @@
 \alias{Freda-package}
 \title{Freda: Federated Refinement and Exploration of Real-World Data}
 \description{
-
+Federated Refinement and Exploration of Real-World Data
 }
 \seealso{
 Useful links:
